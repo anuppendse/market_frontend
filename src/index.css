@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #faf7f1;
+  color: #1e2621;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-1.5 text-[12.5px] font-semibold rounded-md px-3.5 py-2 border border-transparent cursor-pointer transition-colors;
+  }
+  .btn-primary {
+    @apply bg-amber-600 text-white hover:bg-[#A46A18];
+  }
+  .btn-outline {
+    @apply bg-white border-line text-ink hover:border-[#C9C2AF];
+  }
+  .btn-danger-text {
+    @apply bg-transparent border-none text-brand-red font-semibold text-[12.5px] cursor-pointer;
+  }
+  .btn-text {
+    @apply bg-transparent border-none text-brand-blue font-semibold text-[12.5px] cursor-pointer;
+  }
+  .card {
+    @apply bg-white border border-line rounded-card shadow-sm overflow-hidden;
+  }
+  .card-head {
+    @apply flex items-center justify-between px-4.5 py-3 border-b border-line bg-[#F3F6F2];
+  }
+  .field label {
+    @apply text-[12px] font-semibold text-ink mb-1 block;
+  }
+  .field input,
+  .field select,
+  .field textarea {
+    @apply w-full border border-line rounded-md px-2.5 py-2 text-[13px] bg-white text-ink outline-none focus:border-green-700;
+  }
+  .pill {
+    @apply inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold;
+  }
+  .pill-green {
+    @apply bg-[#E1EEE0] text-[#2A6B36];
+  }
+  .pill-amber {
+    @apply bg-amber-100 text-[#8A5A12];
+  }
+  .pill-red {
+    @apply bg-[#F5E1DE] text-brand-red;
+  }
+  .pill-blue {
+    @apply bg-[#E1EBF4] text-brand-blue;
+  }
+  .pill-grey {
+    @apply bg-[#EEEEEC] text-[#6B6B63];
+  }
+}
