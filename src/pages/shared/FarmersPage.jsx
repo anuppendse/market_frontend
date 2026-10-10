@@ -90,7 +90,11 @@ export default function FarmersPage({ canDelete, isAdmin }) {
     { key: "village", header: "Village" },
     ...(isAdmin ? [{ key: "market_name", header: "Market" }] : []),
     { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} label={r.status === "ACTIVE" ? "Active" : "Inactive"} /> },
-    {
+    
+    ...(isAdmin 
+      ? []
+      
+    :[{
       key: "actions",
       header: "Actions",
       render: (r) => (
@@ -104,7 +108,7 @@ export default function FarmersPage({ canDelete, isAdmin }) {
           )}
         </>
       ),
-    },
+    }]),
   ];
 
   return (
@@ -119,7 +123,9 @@ export default function FarmersPage({ canDelete, isAdmin }) {
           />
         )}
         <Spacer />
-        <button className="btn btn-primary" onClick={openAdd}>+ Add Farmer</button>
+        {user?.role_name === "SHOPKEEPER" && (
+  <button className="btn btn-primary" onClick={openAdd}>+ Add Farmer</button>
+)}
       </Toolbar>
 
       <DataTable columns={columns} rows={farmers} loading={loading} emptyText="No farmers in this market yet." />

@@ -24,11 +24,22 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const data = await loginApi(username, password);
-      localStorage.setItem("apmc_token", data.access_token);
-      setUser(data.user);
-      return data.user;
+      const token = data.access_token ?? data.token;
+      const userData = data.user ?? data.profile ?? data;
+
+      if (!token) {
+        throw new Error("No access token returned by the server.");
+      }
+
+      localStorage.setItem("apmc_token", token);
+      setUser(userData);
+      return userData;
     } catch (err) {
-      const message = err?.response?.data?.error || "Login failed. Please try again.";
+      const message =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Login failed. Please try again.";
       setError(message);
       throw err;
     } finally {

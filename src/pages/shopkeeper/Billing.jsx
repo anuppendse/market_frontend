@@ -24,6 +24,38 @@ export default function Billing() {
   const [marketFee, setMarketFee] = useState("0");
   const [lines, setLines] = useState([emptyLine()]);
 
+  useEffect(() => {
+    // Fetch farmers
+    fetchFarmers()
+      .then((res) => setFarmers(res))
+      .catch((err) => {
+        console.error("Error fetching farmers", err);
+        setError("Unable to load farmers");
+      });
+
+    // Fetch commodities
+    fetchCommodities()
+      .then((res) => setCommodities(res))
+      .catch((err) => console.error("Error fetching commodities", err));
+
+    // Fetch gate entries
+    fetchGateEntries()
+      .then((res) => setGateEntries(res))
+      .catch((err) => console.error("Error fetching gate entries", err));
+
+    // Fetch recent bills
+    fetchBills()
+      .then((res) => {
+        setBills(res);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Error fetching bills", err);
+        setError("Unable to load bills");
+        setLoading(false);
+      });
+  }, []);
+
   async function loadAll() {
     setLoading(true);
     const [farmersData, commoditiesData, gateEntriesData, billsData] = await Promise.all([
