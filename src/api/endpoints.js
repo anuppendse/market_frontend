@@ -100,6 +100,11 @@ export const deleteFarmer = (id) => client.delete(`/farmers/${id}`).then((r) => 
 export const fetchGateEntries = (params = {}) =>
   client.get("/vehicles/gate-entries", { params }).then((r) => r.data);
 
+// The vehicle master list -- used to power the Vehicle No autocomplete on
+// the entry form (which existing vehicles have visited before).
+export const fetchVehicles = (params = {}) =>
+  client.get("/vehicles", { params }).then((r) => r.data);
+
 export const logVehicleEntry = (payload) =>
   client.post("/vehicles/gate-entries/entry", payload).then((r) => r.data);
 

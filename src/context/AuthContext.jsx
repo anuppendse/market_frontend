@@ -57,8 +57,16 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
+  // Merges fresh fields (e.g. the response from saving Settings) into the
+  // logged-in user, and persists them -- so the profile popover, the
+  // Settings form, and a page refresh/re-login all keep showing the same,
+  // up-to-date account details instead of the stale copy from login time.
+  function updateUser(updatedFields) {
+    setUser((prev) => (prev ? { ...prev, ...updatedFields } : prev));
+  }
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, error }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, loading, error }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import DataTable from "../../components/DataTable";
 import StatusPill from "../../components/StatusPill";
+import DateRangePicker from "../../components/DateRangePicker";
 import { Toolbar, Spacer } from "../../components/Toolbar";
 import KpiCard from "../../components/KpiCard";
 import { fetchGateEntries } from "../../api/endpoints";
@@ -8,16 +9,31 @@ import { fetchGateEntries } from "../../api/endpoints";
 export default function VehicleLogPage() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [appliedLabel, setAppliedLabel] = useState(null);
 
-  async function load() {
+  async function load(params = {}) {
     setLoading(true);
-    setEntries(await fetchGateEntries());
+    setEntries(await fetchGateEntries(params));
     setLoading(false);
   }
 
   useEffect(() => {
     load();
   }, []);
+
+  function handleApply(period, date_from, date_to, label) {
+    setAppliedLabel(label);
+    load({ date_from, date_to });
+  }
+
+  function handleClear() {
+    setAppliedLabel(null);
+    load();
+  }
+
+  function exportPdf() {
+    window.print();
+  }
 
   const totalWeight = entries.reduce((sum, e) => sum + (e.weight_kg || 0), 0);
 
@@ -43,11 +59,39 @@ export default function VehicleLogPage() {
       <Toolbar>
         <span className="text-[12.5px] text-inksoft">{entries.length} vehicle movements logged</span>
         <Spacer />
-        <button className="btn btn-outline">📅 Date range</button>
-        <button className="btn btn-primary">Export PDF/Excel</button>
+        <DateRangePicker onApply={handleApply} onClear={handleClear} appliedLabel={appliedLabel} />
+        <button className="btn btn-primary" onClick={exportPdf}>Export PDF/Excel</button>
       </Toolbar>
 
       <DataTable columns={columns} rows={entries} loading={loading} />
+
+      <div className="print-only">
+        <h2 style={{ margin: "0 0 4px" }}>APMC Billing System</h2>
+        <h3 style={{ margin: "0 0 4px" }}>Vehicle Entry Log</h3>
+        <p style={{ margin: "0 0 16px", color: "#555" }}>{appliedLabel ? `Period: ${appliedLabel}` : "All available entries"}</p>
+        <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {columns.map((c) => (
+                <th key={c.key} style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "6px 8px" }}>
+                  {c.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((r) => (
+              <tr key={r.id}>
+                {columns.map((c) => (
+                  <td key={c.key} style={{ borderBottom: "1px solid #eee", padding: "6px 8px" }}>
+                    {c.key === "entry_status" ? (r.entry_status === "ENTERED" ? "Entered" : "Exited") : c.render ? c.render(r) : r[c.key]}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

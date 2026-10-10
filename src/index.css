@@ -56,3 +56,27 @@ body {
     @apply bg-[#EEEEEC] text-[#6B6B63];
   }
 }
+
+/* Gate entry print output — hidden on screen, shown only when printing.
+   Scoped so it never affects normal on-screen layout. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-only,
+  .print-only * {
+    visibility: visible;
+  }
+  .print-only {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 24px;
+  }
+}

@@ -23,6 +23,7 @@ import CommoditiesPage from "./pages/shared/CommoditiesPage";
 import FarmersPage from "./pages/shared/FarmersPage";
 import VehicleLogPage from "./pages/shared/VehicleLogPage";
 import ReportsPage from "./pages/shared/ReportsPage";
+import GatekeeperReportsPage from "./pages/gatekeeper/GatekeeperReportsPage";
 import SettingsPage from "./pages/shared/SettingsPage";
 
 function HomeRedirect() {
@@ -107,7 +108,7 @@ export default function App() {
           >
             <Route index element={<GatekeeperDashboard />} />
             <Route path="vehicles" element={<GateOperations />} />
-            <Route path="reports" element={<ReportsPage showSales={false} showGateActivity />} />
+            <Route path="reports" element={<GatekeeperReportsPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
 

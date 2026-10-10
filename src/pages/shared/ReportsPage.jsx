@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import DataTable from "../../components/DataTable";
+import DateRangePicker from "../../components/DateRangePicker";
+import ExportMenu from "../../components/ExportMenu";
+import ReportPrintSheet from "../../components/ReportPrintSheet";
 import { Toolbar, Spacer } from "../../components/Toolbar";
 import { fetchSalesReport, fetchGateActivityReport } from "../../api/endpoints";
 
@@ -7,20 +10,35 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
   const [sales, setSales] = useState([]);
   const [gateActivity, setGateActivity] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState(null); // null = default, unfiltered day-by-day view
+  const [appliedLabel, setAppliedLabel] = useState(null);
+
+  async function load(params = {}) {
+    setLoading(true);
+    const [salesData, gateData] = await Promise.all([
+      showSales ? fetchSalesReport(params) : Promise.resolve([]),
+      showGateActivity ? fetchGateActivityReport(params) : Promise.resolve([]),
+    ]);
+    setSales(salesData);
+    setGateActivity(gateData);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const [salesData, gateData] = await Promise.all([
-        showSales ? fetchSalesReport() : Promise.resolve([]),
-        showGateActivity ? fetchGateActivityReport() : Promise.resolve([]),
-      ]);
-      setSales(salesData);
-      setGateActivity(gateData);
-      setLoading(false);
-    }
     load();
   }, [showSales, showGateActivity]);
+
+  function handleApply(newPeriod, date_from, date_to, label) {
+    setPeriod(newPeriod);
+    setAppliedLabel(label);
+    load({ period: newPeriod, date_from, date_to });
+  }
+
+  function handleClear() {
+    setPeriod(null);
+    setAppliedLabel(null);
+    load();
+  }
 
   const salesColumns = [
     { key: "bill_date", header: "Date" },
@@ -39,12 +57,26 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
     { key: "total_weight", header: "Total Weight", render: (r) => `${r.total_weight.toLocaleString("en-IN")} kg` },
   ];
 
+  // "week"/"month"/"year" collapse the whole range into a single aggregate
+  // row from the backend, so the readable period label is swapped in for it
+  // (same behaviour as the Gate Keeper report). "day" keeps one row per date.
+  const collapsed = ["week", "month", "year"].includes(period);
+  const salesRows = collapsed ? sales.map((r) => ({ ...r, bill_date: appliedLabel })) : sales;
+  const gateRows = collapsed ? gateActivity.map((r) => ({ ...r, day: appliedLabel })) : gateActivity;
+
+  const sections = [];
+  if (showSales) sections.push({ title: "Sales & Commission — By Day", columns: salesColumns, rows: salesRows });
+  if (showGateActivity) sections.push({ title: "Gate Activity — Entries / Exits by Day", columns: gateColumns, rows: gateRows });
+
+  const reportTitle = showSales && showGateActivity ? "Sales & Gate Activity Report" : "Sales & Commission Report";
+  const filenameBase = showSales && showGateActivity ? "sales_gate_activity_report" : "sales_commission_report";
+
   return (
     <div>
       <Toolbar>
-        <button className="btn btn-outline">📅 Date range</button>
+        <DateRangePicker onApply={handleApply} onClear={handleClear} appliedLabel={appliedLabel} />
         <Spacer />
-        <button className="btn btn-primary">Export PDF/Excel</button>
+        <ExportMenu reportTitle={reportTitle} periodLabel={appliedLabel} sections={sections} filenameBase={filenameBase} />
       </Toolbar>
 
       {showSales && (
@@ -52,7 +84,7 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
           <div className="card">
             <div className="card-head"><h3 className="m-0 text-[13.5px] font-bold">Sales &amp; Commission — By Day</h3></div>
             <div className="p-0">
-              <DataTable columns={salesColumns} rows={sales} loading={loading} />
+              <DataTable columns={salesColumns} rows={salesRows} loading={loading} />
             </div>
           </div>
         </div>
@@ -62,10 +94,12 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
         <div className="card">
           <div className="card-head"><h3 className="m-0 text-[13.5px] font-bold">Gate Activity — Entries / Exits by Day</h3></div>
           <div className="p-0">
-            <DataTable columns={gateColumns} rows={gateActivity} loading={loading} />
+            <DataTable columns={gateColumns} rows={gateRows} loading={loading} />
           </div>
         </div>
       )}
+
+      <ReportPrintSheet reportTitle={reportTitle} periodLabel={appliedLabel} sections={sections} />
     </div>
   );
 }

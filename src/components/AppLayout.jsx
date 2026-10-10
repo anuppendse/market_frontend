@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { NAV_CONFIG } from "../utils/navConfig";
+import Modal from "./Modal";
 
 function initials(name = "") {
   return name
@@ -15,6 +17,7 @@ export default function AppLayout({ roleKey }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const nav = NAV_CONFIG[roleKey];
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const activeItem =
     nav.items.find((item) => {
@@ -71,9 +74,14 @@ export default function AppLayout({ roleKey }) {
             <button className="btn btn-outline py-1.5 px-3" onClick={logout}>
               Log Out
             </button>
-            <span className="w-[30px] h-[30px] rounded-full bg-green-700 text-white flex items-center justify-center font-bold text-[11.5px]">
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              aria-label="View profile"
+              className="w-[30px] h-[30px] rounded-full bg-green-700 text-white flex items-center justify-center font-bold text-[11.5px] border-none cursor-pointer"
+            >
               {initials(user?.name)}
-            </span>
+            </button>
           </div>
         </header>
 
@@ -81,6 +89,17 @@ export default function AppLayout({ roleKey }) {
           <Outlet />
         </div>
       </main>
+
+      <Modal open={profileOpen} title="Your Profile" onClose={() => setProfileOpen(false)} maxWidth="380px">
+        <table className="w-full text-[13px]">
+          <tbody>
+            <tr><td className="text-inksoft py-1.5">Full Name</td><td className="text-right">{user?.name || "—"}</td></tr>
+            <tr><td className="text-inksoft py-1.5">Mobile Number</td><td className="text-right">{user?.mobile || "—"}</td></tr>
+            <tr><td className="text-inksoft py-1.5">Email</td><td className="text-right">{user?.email || "—"}</td></tr>
+            <tr><td className="text-inksoft py-1.5">Role</td><td className="text-right">{user?.role_display_name || "—"}</td></tr>
+          </tbody>
+        </table>
+      </Modal>
     </div>
   );
 }
