@@ -55,6 +55,8 @@ export const updateShop = (id, payload) =>
 export const setShopStatus = (id, status) =>
   client.patch(`/shops/${id}/status`, { status }).then((r) => r.data);
 
+export const deleteShop = (id) => client.delete(`/shops/${id}`).then((r) => r.data);
+
 // ---- Categories -----------------------------------------------------------
 export const fetchCategories = (params = {}) =>
   client.get("/categories", { params }).then((r) => r.data);
@@ -76,6 +78,9 @@ export const createCommodity = (payload) =>
 
 export const updateCommodity = (id, payload) =>
   client.put(`/commodities/${id}`, payload).then((r) => r.data);
+
+export const setCommodityStatus = (id, status) =>
+  client.patch(`/commodities/${id}/status`, { status }).then((r) => r.data);
 
 export const deleteCommodity = (id) => client.delete(`/commodities/${id}`).then((r) => r.data);
 

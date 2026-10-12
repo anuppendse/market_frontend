@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import DataTable from "../../components/DataTable";
 import Modal from "../../components/Modal";
-import StatusPill from "../../components/StatusPill";
+import StatusToggle from "../../components/StatusToggle";
 import { Toolbar, SearchBox, FilterSelect, Spacer } from "../../components/Toolbar";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -29,6 +29,18 @@ const EMPTY_FORM = {
 
 export default function UsersPage({ isAdmin }) {
   const { user: me } = useAuth();
+  // Status editability depends on the ROLE of the row being viewed, not just
+  // who's viewing:
+  //  - Admin may flip status only for Admin / Market Admin accounts.
+  //  - Market Admin may flip status only for Shop Keeper / Gate Keeper
+  //    accounts.
+  // Every other combination gets the same toggle, view-only.
+  function canManageStatus(roleName) {
+    if (isAdmin) {
+      return roleName === "ADMIN" || roleName === "MARKET_ADMIN";
+    }
+    return roleName === "SHOPKEEPER" || roleName === "GATEKEEPER";
+  }
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [markets, setMarkets] = useState([]);
@@ -142,7 +154,16 @@ export default function UsersPage({ isAdmin }) {
     { key: "role_display_name", header: "Role" },
     { key: "mobile", header: "Mobile" },
     ...(isAdmin ? [{ key: "market_name", header: "Market" }] : []),
-    { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} label={r.status === "ACTIVE" ? "Active" : "Suspended"} /> },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) =>
+        canManageStatus(r.role_name) ? (
+          <StatusToggle status={r.status} onClick={() => toggleStatus(r)} />
+        ) : (
+          <StatusToggle status={r.status} disabled />
+        ),
+    },
     {
       key: "actions",
       header: "Actions",

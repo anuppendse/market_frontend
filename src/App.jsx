@@ -91,6 +91,7 @@ export default function App() {
           >
             <Route index element={<ShopkeeperDashboard />} />
             <Route path="billing" element={<Billing />} />
+            <Route path="shops" element={<ShopsPage isShopkeeper />} />
             <Route path="farmers" element={<FarmersPage canDelete={false} />} />
             <Route path="commodities" element={<CommoditiesPage readOnly />} />
             <Route path="reports" element={<ReportsPage showSales showGateActivity={false} />} />

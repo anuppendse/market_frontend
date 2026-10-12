@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import DataTable from "../../components/DataTable";
 import Modal from "../../components/Modal";
-import StatusPill from "../../components/StatusPill";
+import StatusToggle from "../../components/StatusToggle";
 import { Toolbar, SearchBox, FilterSelect, Spacer } from "../../components/Toolbar";
 import {
   fetchMarkets,
@@ -123,18 +123,15 @@ export default function Markets() {
     { key: "shop_count", header: "Shops" },
     { key: "user_count", header: "Users" },
     { key: "commission_percent", header: "Commission", render: (r) => (r.commission_percent != null ? `${r.commission_percent}%` : "—") },
-    { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} label={r.status === "ACTIVE" ? "Active" : "Inactive"} /> },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => <StatusToggle status={r.status} onClick={() => toggleStatus(r)} />,
+    },
     {
       key: "actions",
       header: "Actions",
-      render: (r) => (
-        <>
-          <button className="btn-text" onClick={() => openEdit(r)}>Edit</button>{" "}
-          <button className={r.status === "ACTIVE" ? "btn-danger-text" : "btn-text"} onClick={() => toggleStatus(r)}>
-            {r.status === "ACTIVE" ? "Deactivate" : "Activate"}
-          </button>
-        </>
-      ),
+      render: (r) => <button className="btn-text" onClick={() => openEdit(r)}>Edit</button>,
     },
   ];
 
