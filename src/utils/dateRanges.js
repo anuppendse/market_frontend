@@ -2,8 +2,13 @@
 // "Date range" filter (Gatekeeper Report, Vehicle Entry Log). Centralized
 // so a fix only needs to happen once.
 
+// Today's date in the user's LOCAL time zone (YYYY-MM-DD). Using toISOString()
+// here would give yesterday's date for the first hours of the day in India (UTC+5:30).
 export function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
 export function todayISOWeek() {

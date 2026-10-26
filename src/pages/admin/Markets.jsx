@@ -3,6 +3,17 @@ import DataTable from "../../components/DataTable";
 import Modal from "../../components/Modal";
 import StatusToggle from "../../components/StatusToggle";
 import { Toolbar, SearchBox, FilterSelect, Spacer } from "../../components/Toolbar";
+import { activeSearchTerm } from "../../utils/search";
+import {
+  cleanName,
+  businessNameError,
+  marketCodeError,
+  addressError,
+  placeNameError,
+  pincodeError,
+  commissionError,
+  hasErrors,
+} from "../../utils/validators";
 import {
   fetchMarkets,
   createMarket,
@@ -19,8 +30,7 @@ const EMPTY_FORM = {
   state: "",
   pincode: "",
   market_admin_id: "",
-  commission_percent: "0",
-  status: "ACTIVE",
+  commission_percent: "", // compulsory: the user must enter it (0 is allowed, blank is not)
 };
 
 export default function Markets() {
@@ -33,38 +43,50 @@ export default function Markets() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saveError, setSaveError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const [loadError, setLoadError] = useState("");
 
   async function loadAll() {
     setLoading(true);
-    const [marketsData, usersData] = await Promise.all([
-      fetchMarkets(),
-      fetchUsers({ role: "MARKET_ADMIN" }),
-    ]);
-    setMarkets(marketsData);
-    setMarketAdmins(usersData);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const [marketsData, usersData] = await Promise.all([
+        fetchMarkets(),
+        fetchUsers({ role: "MARKET_ADMIN" }),
+      ]);
+      setMarkets(marketsData);
+      setMarketAdmins(usersData);
+    } catch (err) {
+      setLoadError(err?.response?.data?.error || "Could not load markets. Please refresh the page.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     loadAll();
   }, []);
 
+  // Searching starts only after 3 characters; with 1-2 characters the full list stays.
+  const term = activeSearchTerm(search).toLowerCase();
   const filtered = useMemo(() => {
     return markets.filter((m) => {
       const matchesStatus = statusFilter === "ALL" || m.status === statusFilter;
       const matchesSearch =
-        !search ||
-        m.name.toLowerCase().includes(search.toLowerCase()) ||
-        (m.city || "").toLowerCase().includes(search.toLowerCase()) ||
-        m.code.toLowerCase().includes(search.toLowerCase());
+        !term ||
+        (m.name || "").toLowerCase().includes(term) ||
+        (m.city || "").toLowerCase().includes(term) ||
+        (m.code || "").toLowerCase().includes(term);
       return matchesStatus && matchesSearch;
     });
-  }, [markets, statusFilter, search]);
+  }, [markets, statusFilter, term]);
 
   function openAdd() {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setSaveError("");
+    setFieldErrors({});
     setModalOpen(true);
   }
 
@@ -78,21 +100,42 @@ export default function Markets() {
       state: m.state || "",
       pincode: m.pincode || "",
       market_admin_id: m.market_admin_id || "",
-      commission_percent: m.commission_percent != null ? String(m.commission_percent) : "0",
-      status: m.status,
+      commission_percent: m.commission_percent != null ? String(m.commission_percent) : "",
     });
     setSaveError("");
+    setFieldErrors({});
     setModalOpen(true);
   }
 
   async function handleSave(e) {
     e.preventDefault();
     setSaveError("");
+    const errs = {
+      name: businessNameError("Market name", form.name),
+      code: editingId ? "" : marketCodeError(form.code),
+      address: addressError(form.address),
+      city: placeNameError("City", form.city),
+      state: placeNameError("State", form.state),
+      pincode: pincodeError(form.pincode),
+      commission_percent: commissionError(form.commission_percent),
+    };
+    setFieldErrors(errs);
+    if (hasErrors(errs)) return;
+
+    // Status is NOT part of this form: it is changed only from the toggle in the
+    // Market Management table. New markets start as ACTIVE; edits never send status.
     const payload = {
       ...form,
+      name: cleanName(form.name),
+      code: form.code.trim(),
+      address: cleanName(form.address),
+      city: cleanName(form.city),
+      state: cleanName(form.state),
+      pincode: form.pincode.trim(),
       market_admin_id: form.market_admin_id ? Number(form.market_admin_id) : null,
-      commission_percent: form.commission_percent ? Number(form.commission_percent) : 0,
+      commission_percent: Number(form.commission_percent),
     };
+    if (!editingId) payload.status = "ACTIVE";
     try {
       if (editingId) {
         await updateMarket(editingId, payload);
@@ -107,8 +150,12 @@ export default function Markets() {
   }
 
   async function toggleStatus(m) {
-    await setMarketStatus(m.id, m.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
-    loadAll();
+    try {
+      await setMarketStatus(m.id, m.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
+      loadAll();
+    } catch (err) {
+      alert(err?.response?.data?.error || "Could not change market status.");
+    }
   }
 
   const totalShops = markets.reduce((sum, m) => sum + (m.shop_count || 0), 0);
@@ -157,7 +204,7 @@ export default function Markets() {
       </div>
 
       <Toolbar>
-        <SearchBox value={search} onChange={setSearch} placeholder="Search markets..." />
+        <SearchBox value={search} onChange={setSearch} placeholder="Search markets... (min 3 characters)" />
         <FilterSelect
           value={statusFilter}
           onChange={setStatusFilter}
@@ -171,6 +218,9 @@ export default function Markets() {
         <button className="btn btn-primary" onClick={openAdd}>+ Add Market</button>
       </Toolbar>
 
+      {loadError && (
+        <div className="mb-3 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">{loadError}</div>
+      )}
       <DataTable columns={columns} rows={filtered} loading={loading} emptyText="No markets yet — add your first APMC yard." />
 
       <Modal
@@ -179,23 +229,25 @@ export default function Markets() {
         onClose={() => setModalOpen(false)}
         maxWidth="560px"
       >
-        <form onSubmit={handleSave} className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSave} noValidate className="grid grid-cols-2 gap-4">
           {saveError && (
             <div className="col-span-2 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">{saveError}</div>
           )}
           <div className="field col-span-2">
             <label>Market Name</label>
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Pune APMC Yard" />
+            <input value={form.name} maxLength={100} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((f) => ({ ...f, name: "" })); }} placeholder="e.g. Pune APMC Yard" />
+            {fieldErrors.name && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.name}</div>}
           </div>
           <div className="field">
             <label>Market Code</label>
             <input
               value={form.code}
-              onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+              onChange={(e) => { setForm({ ...form, code: e.target.value.toUpperCase().replace(/\s/g, "") }); setFieldErrors((f) => ({ ...f, code: "" })); }}
               disabled={!!editingId}
-              required
+              maxLength={20}
               placeholder="e.g. PUNE-APMC"
             />
+            {fieldErrors.code && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.code}</div>}
           </div>
           <div className="field">
             <label>Assign Market Admin</label>
@@ -208,33 +260,29 @@ export default function Markets() {
           </div>
           <div className="field col-span-2">
             <label>Address</label>
-            <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+            <input value={form.address} maxLength={200} onChange={(e) => { setForm({ ...form, address: e.target.value }); setFieldErrors((f) => ({ ...f, address: "" })); }} />
+            {fieldErrors.address && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.address}</div>}
           </div>
           <div className="field">
             <label>City</label>
-            <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+            <input value={form.city} maxLength={50} onChange={(e) => { setForm({ ...form, city: e.target.value }); setFieldErrors((f) => ({ ...f, city: "" })); }} />
+            {fieldErrors.city && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.city}</div>}
           </div>
           <div className="field">
             <label>State</label>
-            <input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+            <input value={form.state} maxLength={50} onChange={(e) => { setForm({ ...form, state: e.target.value }); setFieldErrors((f) => ({ ...f, state: "" })); }} />
+            {fieldErrors.state && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.state}</div>}
           </div>
           <div className="field">
             <label>Pincode</label>
-            <input value={form.pincode} onChange={(e) => setForm({ ...form, pincode: e.target.value })} />
+            <input value={form.pincode} inputMode="numeric" maxLength={6} placeholder="6-digit pincode" onChange={(e) => { setForm({ ...form, pincode: e.target.value.replace(/\D/g, "") }); setFieldErrors((f) => ({ ...f, pincode: "" })); }} />
+            {fieldErrors.pincode && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.pincode}</div>}
           </div>
           <div className="field">
-            <label>Commission % <span className="text-inksoft font-normal">(applied to every bill in this market)</span></label>
-            <input type="number" step="0.1" min="0" value={form.commission_percent} onChange={(e) => setForm({ ...form, commission_percent: e.target.value })} />
+            <label>Commission % <span className="text-brand-red">*</span> <span className="text-inksoft font-normal">(required, applied to every bill in this market)</span></label>
+            <input type="number" step="0.01" min="0" max="100" required placeholder="e.g. 5" value={form.commission_percent} onKeyDown={(e) => { if (["e", "E", "+", "-"].includes(e.key)) e.preventDefault(); }} onChange={(e) => { setForm({ ...form, commission_percent: e.target.value }); setFieldErrors((f) => ({ ...f, commission_percent: "" })); }} />
+            {fieldErrors.commission_percent && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.commission_percent}</div>}
           </div>
-          {editingId && (
-            <div className="field">
-              <label>Status</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
-            </div>
-          )}
           <div className="col-span-2 flex gap-2.5 mt-1">
             <button type="submit" className="btn btn-primary">Save Market</button>
             <button type="button" className="btn btn-outline" onClick={() => setModalOpen(false)}>Cancel</button>

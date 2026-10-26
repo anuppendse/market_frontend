@@ -12,15 +12,23 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(null); // null = default, unfiltered day-by-day view
   const [appliedLabel, setAppliedLabel] = useState(null);
+  const [loadErrors, setLoadErrors] = useState([]);
 
+  // Sales and gate activity load independently: if one fails the other still
+  // shows, and the page never stays stuck on "Loading...".
   async function load(params = {}) {
     setLoading(true);
-    const [salesData, gateData] = await Promise.all([
+    const [salesRes, gateRes] = await Promise.allSettled([
       showSales ? fetchSalesReport(params) : Promise.resolve([]),
       showGateActivity ? fetchGateActivityReport(params) : Promise.resolve([]),
     ]);
-    setSales(salesData);
-    setGateActivity(gateData);
+    const problems = [];
+    const describe = (r) => (r.reason?.response?.status ? `server error ${r.reason.response.status}` : "cannot reach the server");
+    if (salesRes.status === "fulfilled") setSales(Array.isArray(salesRes.value) ? salesRes.value : []);
+    else { setSales([]); problems.push(`Could not load the sales report (${describe(salesRes)}).`); }
+    if (gateRes.status === "fulfilled") setGateActivity(Array.isArray(gateRes.value) ? gateRes.value : []);
+    else { setGateActivity([]); problems.push(`Could not load the gate activity report (${describe(gateRes)}).`); }
+    setLoadErrors(problems);
     setLoading(false);
   }
 
@@ -43,10 +51,10 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
   const salesColumns = [
     { key: "bill_date", header: "Date" },
     { key: "bill_count", header: "Bills" },
-    { key: "gross_total", header: "Gross Amount", render: (r) => `₹${r.gross_total.toLocaleString("en-IN")}` },
-    { key: "commission_total", header: "Commission", render: (r) => `₹${r.commission_total.toLocaleString("en-IN")}` },
-    { key: "market_fee_total", header: "Market Fee", render: (r) => `₹${r.market_fee_total.toLocaleString("en-IN")}` },
-    { key: "net_total", header: "Net Payable", render: (r) => `₹${r.net_total.toLocaleString("en-IN")}` },
+    { key: "gross_total", header: "Gross Amount", render: (r) => `₹${Number(r.gross_total || 0).toLocaleString("en-IN")}` },
+    { key: "commission_total", header: "Commission", render: (r) => `₹${Number(r.commission_total || 0).toLocaleString("en-IN")}` },
+    { key: "market_fee_total", header: "Market Fee", render: (r) => `₹${Number(r.market_fee_total || 0).toLocaleString("en-IN")}` },
+    { key: "net_total", header: "Net Payable", render: (r) => `₹${Number(r.net_total || 0).toLocaleString("en-IN")}` },
   ];
 
   const gateColumns = [
@@ -54,7 +62,7 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
     { key: "entries", header: "Entries" },
     { key: "exits", header: "Exits" },
     { key: "unique_vehicles", header: "Unique Vehicles" },
-    { key: "total_weight", header: "Total Weight", render: (r) => `${r.total_weight.toLocaleString("en-IN")} kg` },
+    { key: "total_weight", header: "Total Weight", render: (r) => `${Number(r.total_weight || 0).toLocaleString("en-IN")} kg` },
   ];
 
   // "week"/"month"/"year" collapse the whole range into a single aggregate
@@ -78,6 +86,12 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
         <Spacer />
         <ExportMenu reportTitle={reportTitle} periodLabel={appliedLabel} sections={sections} filenameBase={filenameBase} />
       </Toolbar>
+
+      {loadErrors.length > 0 && (
+        <div className="mb-3 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">
+          {loadErrors.map((m, i) => <div key={i}>{m}</div>)}
+        </div>
+      )}
 
       {showSales && (
         <div className="mb-6">

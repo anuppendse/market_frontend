@@ -11,12 +11,22 @@ export default function GatekeeperReportsPage() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(null); // null = default, unfiltered day-by-day view
   const [appliedLabel, setAppliedLabel] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
   async function load(params = {}) {
     setLoading(true);
-    const data = await fetchGateActivityReport(params);
-    setGateActivity(data);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const data = await fetchGateActivityReport(params);
+      setGateActivity(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("fetchGateActivityReport failed:", err);
+      setGateActivity([]);
+      const status = err?.response?.status;
+      setLoadError(`Could not load the gate activity report${status ? ` (server error ${status})` : " (cannot reach the server)"}.`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -40,7 +50,7 @@ export default function GatekeeperReportsPage() {
     { key: "entries", header: "Entries" },
     { key: "exits", header: "Exits" },
     { key: "unique_vehicles", header: "Unique Vehicles" },
-    { key: "total_weight", header: "Total Weight", render: (r) => `${r.total_weight.toLocaleString("en-IN")} kg` },
+    { key: "total_weight", header: "Total Weight", render: (r) => `${Number(r.total_weight || 0).toLocaleString("en-IN")} kg` },
   ];
 
   // "week"/"month"/"year" collapse the whole range into a single aggregate
@@ -67,6 +77,9 @@ export default function GatekeeperReportsPage() {
         />
       </Toolbar>
 
+      {loadError && (
+        <div className="mb-3 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">{loadError}</div>
+      )}
       <div className="card">
         <div className="card-head"><h3 className="m-0 text-[13.5px] font-bold">Gate Activity — Entries / Exits by Day</h3></div>
         <div className="p-0">

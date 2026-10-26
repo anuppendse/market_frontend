@@ -4,7 +4,9 @@ import Modal from "../../components/Modal";
 import StatusToggle from "../../components/StatusToggle";
 import { Toolbar, SearchBox, FilterSelect, Spacer } from "../../components/Toolbar";
 import { useAuth } from "../../context/AuthContext";
+import { cleanName, businessNameError, personNameError, mobileError } from "../../utils/validators";
 import { fetchShops, createShop, updateShop, setShopStatus, deleteShop, fetchMarkets } from "../../api/endpoints";
+import { SEARCH_MIN_CHARS, SEARCH_DEBOUNCE_MS } from "../../utils/search";
 
 const EMPTY_FORM = {
   name: "",
@@ -16,18 +18,15 @@ const EMPTY_FORM = {
 
 // Shop search only hits the backend once at least 3 characters are typed
 // (1-2 characters => no request; the previously loaded list stays as-is).
-const SEARCH_MIN_CHARS = 3;
-const SEARCH_DEBOUNCE_MS = 300;
 
 function validateShopForm(form, isAdmin) {
   const errors = {};
-  if (!form.name.trim()) errors.name = "Shop name is required.";
-  if (!form.owner_name.trim()) errors.owner_name = "Owner name is required.";
-  if (!form.mobile.trim()) {
-    errors.mobile = "Mobile number is required.";
-  } else if (!/^\d{10}$/.test(form.mobile.trim())) {
-    errors.mobile = "Mobile number must be exactly 10 digits.";
-  }
+  const nameErr = businessNameError("Shop name", form.name);
+  if (nameErr) errors.name = nameErr;
+  const ownerErr = personNameError("Owner name", form.owner_name);
+  if (ownerErr) errors.owner_name = ownerErr;
+  const mobileErr = mobileError(form.mobile);
+  if (mobileErr) errors.mobile = mobileErr;
   if (isAdmin && !form.market_id) errors.market_id = "Please select a market.";
   return errors;
 }
@@ -55,28 +54,38 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
   const [saveError, setSaveError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
+  const [loadError, setLoadError] = useState("");
+
   async function loadShops(query) {
     setLoading(true);
-    const params = query && query.length >= SEARCH_MIN_CHARS ? { q: query } : {};
-    const data = await fetchShops(params);
-    setShops(data);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const q = (query || "").trim();
+      const params = q.length >= SEARCH_MIN_CHARS ? { q } : {};
+      if (isAdmin && marketFilter) params.market_id = marketFilter;
+      setShops(await fetchShops(params));
+    } catch (err) {
+      setLoadError(err?.response?.data?.error || "Could not load shops. Please refresh the page.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     if (isAdmin) {
-      fetchMarkets().then(setMarkets);
+      fetchMarkets().then(setMarkets).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Debounced, min-3-character server search. 1-2 characters => no request.
   useEffect(() => {
-    if (search.length > 0 && search.length < SEARCH_MIN_CHARS) return;
+    const typed = search.trim().length;
+    if (typed > 0 && typed < SEARCH_MIN_CHARS) return;
     const handle = setTimeout(() => loadShops(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, marketFilter]);
 
   const filtered = useMemo(() => {
     let list = shops;
@@ -114,7 +123,34 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
-    const payload = { ...form, market_id: Number(form.market_id) };
+    // Duplicate check against the full, current shop list (not the filtered
+    // table): one shop name per market, one shop per mobile number.
+    try {
+      const existing = await fetchShops();
+      const norm = (v) => cleanName(v).toLowerCase();
+      const others = existing.filter((x) => x.id !== editingId);
+      const sameName = others.find(
+        (x) => norm(x.name) === norm(form.name) && String(x.market_id) === String(form.market_id)
+      );
+      const sameMobile = others.find((x) => (x.mobile || "").trim() === form.mobile.trim());
+      const dupErrors = {};
+      if (sameName) dupErrors.name = `A shop named "${sameName.name}" already exists in this market.`;
+      if (sameMobile) dupErrors.mobile = `This mobile number is already registered for shop "${sameMobile.name}".`;
+      if (Object.keys(dupErrors).length > 0) {
+        setFieldErrors(dupErrors);
+        return;
+      }
+    } catch {
+      // If the list can't be loaded, the server-side check still applies.
+    }
+
+    const payload = {
+      ...form,
+      name: cleanName(form.name),
+      owner_name: cleanName(form.owner_name),
+      mobile: form.mobile.trim(),
+      market_id: Number(form.market_id),
+    };
     try {
       if (editingId) {
         await updateShop(editingId, payload);
@@ -201,32 +237,34 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
         {canManageShops && <button className="btn btn-primary" onClick={openAdd}>+ Add Shop</button>}
       </Toolbar>
 
+      {loadError && (
+        <div className="mb-3 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">{loadError}</div>
+      )}
       <DataTable columns={columns} rows={filtered} loading={loading} />
 
       <Modal open={modalOpen} title={editingId ? "Edit Shop" : "Add Shop"} onClose={() => setModalOpen(false)}>
-        <form onSubmit={handleSave} className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSave} noValidate className="grid grid-cols-2 gap-4">
           {saveError && (
             <div className="col-span-2 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">{saveError}</div>
           )}
           <div className="field col-span-2">
             <label>Shop Name</label>
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <input value={form.name} maxLength={100} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((f) => ({ ...f, name: "" })); }} />
             {fieldErrors.name && <span className="text-[12px] text-brand-red">{fieldErrors.name}</span>}
           </div>
           <div className="field">
             <label>Owner Name</label>
-            <input value={form.owner_name} onChange={(e) => setForm({ ...form, owner_name: e.target.value })} required />
+            <input value={form.owner_name} maxLength={60} onChange={(e) => { setForm({ ...form, owner_name: e.target.value }); setFieldErrors((f) => ({ ...f, owner_name: "" })); }} />
             {fieldErrors.owner_name && <span className="text-[12px] text-brand-red">{fieldErrors.owner_name}</span>}
           </div>
           <div className="field">
             <label>Mobile</label>
             <input
               value={form.mobile}
-              onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+              onChange={(e) => { setForm({ ...form, mobile: e.target.value.replace(/\D/g, "") }); setFieldErrors((f) => ({ ...f, mobile: "" })); }}
               placeholder="10-digit mobile number"
               inputMode="numeric"
               maxLength={10}
-              required
             />
             {fieldErrors.mobile && <span className="text-[12px] text-brand-red">{fieldErrors.mobile}</span>}
           </div>

@@ -7,6 +7,7 @@ import {
   mobileError,
   emailError,
   confirmPasswordError,
+  passwordError,
 } from "../../utils/validators";
 
 export default function SettingsPage() {
@@ -30,7 +31,8 @@ export default function SettingsPage() {
     const errs = {
       name: fullNameError(form.name),
       mobile: mobileError(form.mobile),
-      email: emailError(form.email),
+      email: form.email.trim() ? emailError(form.email) : "",
+      password: passwordError(form.password, false),
       confirmPassword: confirmPasswordError(form.password, form.confirmPassword),
     };
     setFieldErrors(errs);
@@ -78,7 +80,8 @@ export default function SettingsPage() {
           </div>
           <div className="field">
             <label>Change Password</label>
-            <input type="password" placeholder="••••••••" value={form.password} onChange={(e) => { setForm({ ...form, password: e.target.value }); setFieldErrors((f) => ({ ...f, confirmPassword: "" })); }} />
+            <input type="password" placeholder="••••••••" value={form.password} onChange={(e) => { setForm({ ...form, password: e.target.value }); setFieldErrors((f) => ({ ...f, password: "", confirmPassword: "" })); }} />
+            {fieldErrors.password && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.password}</div>}
           </div>
           <div className="field">
             <label>Confirm Password</label>

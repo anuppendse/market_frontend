@@ -2,17 +2,29 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { NAV_CONFIG } from "../utils/navConfig";
+import { hasErrors } from "../utils/validators";
 
 export default function Login() {
   const { login, loading, error } = useAuth();
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   async function handleSubmit(e) {
     e.preventDefault();
+    const errs = {
+      username: !username.trim()
+        ? "Username is required"
+        : username.trim().length > 30
+        ? "Username must not exceed 30 characters"
+        : "",
+      password: !password ? "Password is required" : password.length > 64 ? "Password must not exceed 64 characters" : "",
+    };
+    setFieldErrors(errs);
+    if (hasErrors(errs)) return;
     try {
-      const user = await login(username, password);
+      const user = await login(username.trim(), password);
       const base = NAV_CONFIG[user.role_name]?.basePath || "/login";
       navigate(base);
     } catch {
@@ -50,6 +62,7 @@ export default function Login() {
       <div className="flex-1 flex items-center justify-center bg-paper p-10">
         <form
           onSubmit={handleSubmit}
+          noValidate
           className="bg-white border border-line rounded-2xl px-8 pt-8 pb-6 w-full max-w-[380px] shadow-lg"
         >
           <div className="text-[11px] font-bold text-amber-600 tracking-wide mb-1.5">
@@ -70,9 +83,11 @@ export default function Login() {
               type="text"
               placeholder="Enter your username"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
+              onChange={(e) => { setUsername(e.target.value); setFieldErrors((f) => ({ ...f, username: "" })); }}
+              maxLength={30}
+              autoComplete="username"
             />
+            {fieldErrors.username && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.username}</div>}
           </div>
           <div className="field mb-3.5">
             <label>Password</label>
@@ -80,9 +95,11 @@ export default function Login() {
               type="password"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              onChange={(e) => { setPassword(e.target.value); setFieldErrors((f) => ({ ...f, password: "" })); }}
+              maxLength={64}
+              autoComplete="current-password"
             />
+            {fieldErrors.password && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.password}</div>}
           </div>
           <button
             type="submit"

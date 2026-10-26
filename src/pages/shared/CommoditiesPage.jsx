@@ -4,6 +4,7 @@ import Modal from "../../components/Modal";
 import StatusToggle from "../../components/StatusToggle";
 import { Toolbar, SearchBox, FilterSelect, Spacer } from "../../components/Toolbar";
 import { useAuth } from "../../context/AuthContext";
+import { cleanName, businessNameError, descriptionError, amountError, hasErrors } from "../../utils/validators";
 import {
   fetchCommodities,
   createCommodity,
@@ -18,6 +19,7 @@ import {
   updateCategory,
   deleteCategory,
 } from "../../api/endpoints";
+import { SEARCH_MIN_CHARS, SEARCH_DEBOUNCE_MS } from "../../utils/search";
 
 const EMPTY_FORM = { name: "", category_id: "", unit: "KG", rate_per_unit: "", market_id: "" };
 const EMPTY_CATEGORY_FORM = { name: "", description: "", market_id: "" };
@@ -25,25 +27,34 @@ const EMPTY_CATEGORY_FORM = { name: "", description: "", market_id: "" };
 // Validates the Add Commodity form. Every field is mandatory except the
 // opening rate, which is optional but -- if given -- cannot be negative
 // (0 is the lowest allowed value).
+const UNITS = ["KG", "QUINTAL", "TON", "BAG", "DOZEN"];
+
 function validateCommodityForm(form, isAdmin) {
   const errors = {};
-  if (!form.name.trim()) errors.name = "Commodity name is required.";
+  const nameErr = businessNameError("Commodity name", form.name);
+  if (nameErr) errors.name = nameErr;
   if (!form.category_id) errors.category_id = "Please select a category.";
-  if (!form.unit) errors.unit = "Please select a unit.";
+  if (!form.unit || !UNITS.includes(form.unit)) errors.unit = "Please select a valid unit.";
   if (isAdmin && !form.market_id) errors.market_id = "Please select a market.";
-  if (form.rate_per_unit !== "" && form.rate_per_unit !== null && form.rate_per_unit !== undefined) {
-    const rate = Number(form.rate_per_unit);
-    if (Number.isNaN(rate) || rate < 0) {
-      errors.rate_per_unit = "Opening rate cannot be less than 0.";
-    }
-  }
+  const rateErr = amountError("Opening rate", form.rate_per_unit, { required: false, allowZero: true });
+  if (rateErr) errors.rate_per_unit = rateErr;
+  return errors;
+}
+
+function validateCategoryForm(form, isAdmin) {
+  const errors = {};
+  const nameErr = businessNameError("Category name", form.name);
+  if (nameErr) errors.name = nameErr;
+  // A category name must contain letters -- numbers/symbols alone are not valid.
+  else if (!/[A-Za-z]/.test(form.name)) errors.name = "Incorrect category. Category name must contain letters.";
+  const descErr = descriptionError(form.description);
+  if (descErr) errors.description = descErr;
+  if (isAdmin && !form.market_id) errors.market_id = "Please select a market.";
   return errors;
 }
 
 // Search only hits the backend once at least 3 characters are typed
 // (1-2 characters => no request; the previously loaded list stays as-is).
-const SEARCH_MIN_CHARS = 3;
-const SEARCH_DEBOUNCE_MS = 300;
 
 // props:
 //   isAdmin   - Admin view: Market filter/columns shown, everything is
@@ -81,6 +92,7 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [rateModal, setRateModal] = useState(null);
   const [newRate, setNewRate] = useState("");
+  const [rateError, setRateError] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saveError, setSaveError] = useState("");
@@ -94,32 +106,44 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [categoryForm, setCategoryForm] = useState(EMPTY_CATEGORY_FORM);
   const [categoryError, setCategoryError] = useState("");
+  const [categoryFieldErrors, setCategoryFieldErrors] = useState({});
 
   async function loadCommodities(query, marketId, status) {
     setLoading(true);
     const params = {};
-    if (query && query.length >= SEARCH_MIN_CHARS) params.q = query;
+    if (query && query.trim().length >= SEARCH_MIN_CHARS) params.q = query.trim();
     if (isAdmin && marketId) params.market_id = marketId;
     if (status && status !== "ALL") params.status = status;
-    const data = await fetchCommodities(params);
-    setCommodities(data);
-    setLoading(false);
+    try {
+      setCommodities(await fetchCommodities(params));
+    } catch (err) {
+      console.error("fetchCommodities failed", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadCategories(query, marketId, status) {
     setCategoriesLoading(true);
     const params = {};
-    if (query && query.length >= SEARCH_MIN_CHARS) params.q = query;
+    if (query && query.trim().length >= SEARCH_MIN_CHARS) params.q = query.trim();
     if (isAdmin && marketId) params.market_id = marketId;
     if (status && status !== "ALL") params.status = status;
-    const data = await fetchCategories(params);
-    setCategories(data);
-    setCategoriesLoading(false);
+    try {
+      setCategories(await fetchCategories(params));
+    } catch (err) {
+      console.error("fetchCategories failed", err);
+    } finally {
+      setCategoriesLoading(false);
+    }
   }
 
   async function loadStatic() {
-    const marketsData = isAdmin ? await fetchMarkets() : [];
-    setMarkets(marketsData);
+    try {
+      setMarkets(isAdmin ? await fetchMarkets() : []);
+    } catch {
+      setMarkets([]);
+    }
   }
 
   // Map market_id -> market name (fallback for when a row's market_name
@@ -134,7 +158,8 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
 
   // Debounced, min-3-character commodity search. 1-2 characters => no request.
   useEffect(() => {
-    if (search.length > 0 && search.length < SEARCH_MIN_CHARS) return;
+    const typed = search.trim().length;
+    if (typed > 0 && typed < SEARCH_MIN_CHARS) return;
     const handle = setTimeout(
       () => loadCommodities(search, marketFilter, commodityStatusFilter),
       SEARCH_DEBOUNCE_MS
@@ -145,7 +170,8 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
 
   // Debounced, min-3-character category search. 1-2 characters => no request.
   useEffect(() => {
-    if (categorySearch.length > 0 && categorySearch.length < SEARCH_MIN_CHARS) return;
+    const typedCat = categorySearch.trim().length;
+    if (typedCat > 0 && typedCat < SEARCH_MIN_CHARS) return;
     const handle = setTimeout(
       () => loadCategories(categorySearch, categoryMarketFilter, categoryStatusFilter),
       SEARCH_DEBOUNCE_MS
@@ -175,25 +201,28 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
   async function handleSave(e) {
     e.preventDefault();
     setSaveError("");
-    if (!editingId) {
-      const errors = validateCommodityForm(form, isAdmin);
-      setFieldErrors(errors);
-      if (Object.keys(errors).length > 0) return;
+    const errors = validateCommodityForm(form, isAdmin && !editingId);
+    // Edit mode: category is optional (may stay uncategorized) and no opening rate.
+    if (editingId) {
+      delete errors.category_id;
+      delete errors.rate_per_unit;
     }
+    setFieldErrors(errors);
+    if (hasErrors(errors)) return;
     try {
       if (editingId) {
         await updateCommodity(editingId, {
-          name: form.name,
+          name: cleanName(form.name),
           category_id: form.category_id ? Number(form.category_id) : null,
           unit: form.unit,
         });
       } else {
         await createCommodity({
-          name: form.name,
+          name: cleanName(form.name),
           category_id: form.category_id ? Number(form.category_id) : null,
           unit: form.unit,
           market_id: Number(form.market_id),
-          rate_per_unit: form.rate_per_unit ? Number(form.rate_per_unit) : undefined,
+          rate_per_unit: form.rate_per_unit !== "" ? Number(form.rate_per_unit) : undefined,
         });
       }
       setModalOpen(false);
@@ -223,10 +252,18 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
   }
 
   async function saveRate() {
-    if (!newRate) return;
-    await addCommodityRate(rateModal.id, { rate_per_unit: Number(newRate) });
+    const err = amountError("Rate", newRate);
+    setRateError(err);
+    if (err) return;
+    try {
+      await addCommodityRate(rateModal.id, { rate_per_unit: Number(newRate) });
+    } catch (e) {
+      setRateError(e?.response?.data?.error || "Could not update rate.");
+      return;
+    }
     setRateModal(null);
     setNewRate("");
+    setRateError("");
     loadCommodities(search, marketFilter, commodityStatusFilter);
   }
 
@@ -263,7 +300,7 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
             render: (r) => (
               <>
                 <button className="btn-text" onClick={() => openEdit(r)}>Edit</button>{" "}
-                <button className="btn-text" onClick={() => setRateModal(r)}>Update Rate</button>{" "}
+                <button className="btn-text" onClick={() => { setRateError(""); setNewRate(""); setRateModal(r); }}>Update Rate</button>{" "}
                 <button className="btn-text" onClick={() => openHistory(r)}>View History</button>{" "}
                 <button className="btn-danger-text" onClick={() => handleDeleteCommodity(r)}>Delete</button>
               </>
@@ -279,6 +316,7 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
     setEditingCategoryId(null);
     setCategoryForm({ ...EMPTY_CATEGORY_FORM, market_id: isAdmin ? "" : me?.market_id || "" });
     setCategoryError("");
+    setCategoryFieldErrors({});
     setCategoryModalOpen(true);
   }
 
@@ -286,23 +324,27 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
     setEditingCategoryId(c.id);
     setCategoryForm({ name: c.name, description: c.description || "", market_id: c.market_id });
     setCategoryError("");
+    setCategoryFieldErrors({});
     setCategoryModalOpen(true);
   }
 
   async function handleSaveCategory(e) {
     e.preventDefault();
     setCategoryError("");
+    const catErrors = validateCategoryForm(categoryForm, isAdmin);
+    setCategoryFieldErrors(catErrors);
+    if (hasErrors(catErrors)) return;
     try {
       if (editingCategoryId) {
         await updateCategory(editingCategoryId, {
-          name: categoryForm.name,
-          description: categoryForm.description,
+          name: cleanName(categoryForm.name),
+          description: cleanName(categoryForm.description),
           ...(isAdmin ? { market_id: Number(categoryForm.market_id) } : {}),
         });
       } else {
         await createCategory({
-          name: categoryForm.name,
-          description: categoryForm.description,
+          name: cleanName(categoryForm.name),
+          description: cleanName(categoryForm.description),
           market_id: Number(categoryForm.market_id),
         });
       }
@@ -447,21 +489,20 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
       )}
 
       <Modal open={modalOpen} title={editingId ? "Edit Commodity" : "Add Commodity"} onClose={() => setModalOpen(false)}>
-        <form onSubmit={handleSave} className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSave} noValidate className="grid grid-cols-2 gap-4">
           {saveError && (
             <div className="col-span-2 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">{saveError}</div>
           )}
           <div className="field col-span-2">
             <label>Commodity Name</label>
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+            <input value={form.name} maxLength={100} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((f) => ({ ...f, name: "" })); }} />
             {fieldErrors.name && <span className="text-[12px] text-brand-red">{fieldErrors.name}</span>}
           </div>
           <div className="field">
             <label>Category</label>
             <select
               value={form.category_id}
-              onChange={(e) => setForm({ ...form, category_id: e.target.value })}
-              required={!editingId}
+              onChange={(e) => { setForm({ ...form, category_id: e.target.value }); setFieldErrors((f) => ({ ...f, category_id: "" })); }}
             >
               {editingId ? (
                 <option value="">— Uncategorized —</option>
@@ -476,8 +517,8 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
           </div>
           <div className="field">
             <label>Unit</label>
-            <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} required>
-              {["KG", "QUINTAL", "TON", "BAG", "DOZEN"].map((u) => (
+            <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+              {UNITS.map((u) => (
                 <option key={u} value={u}>{u}</option>
               ))}
             </select>
@@ -486,7 +527,7 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
           {isAdmin && !editingId && (
             <div className="field">
               <label>Market</label>
-              <select value={form.market_id} onChange={(e) => setForm({ ...form, market_id: e.target.value })} required>
+              <select value={form.market_id} onChange={(e) => { setForm({ ...form, market_id: e.target.value }); setFieldErrors((f) => ({ ...f, market_id: "" })); }}>
                 <option value="" disabled>Select market</option>
                 {markets.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
@@ -503,7 +544,7 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
                 step="0.01"
                 min="0"
                 value={form.rate_per_unit}
-                onChange={(e) => setForm({ ...form, rate_per_unit: e.target.value })}
+                onChange={(e) => { setForm({ ...form, rate_per_unit: e.target.value }); setFieldErrors((f) => ({ ...f, rate_per_unit: "" })); }}
               />
               {fieldErrors.rate_per_unit && <span className="text-[12px] text-brand-red">{fieldErrors.rate_per_unit}</span>}
             </div>
@@ -515,14 +556,15 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
         </form>
       </Modal>
 
-      <Modal open={!!rateModal} title={`Update Rate — ${rateModal?.name || ""}`} onClose={() => setRateModal(null)}>
+      <Modal open={!!rateModal} title={`Update Rate — ${rateModal?.name || ""}`} onClose={() => { setRateModal(null); setRateError(""); }}>
         <div className="field mb-4">
           <label>New Rate per {rateModal?.unit}</label>
-          <input type="number" step="0.01" value={newRate} onChange={(e) => setNewRate(e.target.value)} autoFocus />
+          <input type="number" step="0.01" min="0" value={newRate} onChange={(e) => { setNewRate(e.target.value); setRateError(""); }} autoFocus />
+          {rateError && <span className="text-[12px] text-brand-red">{rateError}</span>}
         </div>
         <div className="flex gap-2.5">
           <button className="btn btn-primary" onClick={saveRate}>Save Rate</button>
-          <button className="btn btn-outline" onClick={() => setRateModal(null)}>Cancel</button>
+          <button className="btn btn-outline" onClick={() => { setRateModal(null); setRateError(""); }}>Cancel</button>
         </div>
       </Modal>
 
@@ -550,27 +592,30 @@ export default function CommoditiesPage({ isAdmin, readOnly }) {
         title={editingCategoryId ? "Edit Category" : "Add Category"}
         onClose={() => setCategoryModalOpen(false)}
       >
-        <form onSubmit={handleSaveCategory} className="grid grid-cols-1 gap-4">
+        <form onSubmit={handleSaveCategory} noValidate className="grid grid-cols-1 gap-4">
           {categoryError && (
             <div className="text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">{categoryError}</div>
           )}
           <div className="field">
             <label>Category Name</label>
-            <input value={categoryForm.name} onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })} required placeholder="e.g. Vegetable" />
+            <input value={categoryForm.name} maxLength={100} onChange={(e) => { setCategoryForm({ ...categoryForm, name: e.target.value }); setCategoryFieldErrors((f) => ({ ...f, name: "" })); }} placeholder="e.g. Vegetable" />
+            {categoryFieldErrors.name && <span className="text-[12px] text-brand-red">{categoryFieldErrors.name}</span>}
           </div>
           <div className="field">
             <label>Description</label>
-            <input value={categoryForm.description} onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })} />
+            <input value={categoryForm.description} maxLength={200} onChange={(e) => { setCategoryForm({ ...categoryForm, description: e.target.value }); setCategoryFieldErrors((f) => ({ ...f, description: "" })); }} />
+            {categoryFieldErrors.description && <span className="text-[12px] text-brand-red">{categoryFieldErrors.description}</span>}
           </div>
           {isAdmin && (
             <div className="field">
               <label>Market</label>
-              <select value={categoryForm.market_id} onChange={(e) => setCategoryForm({ ...categoryForm, market_id: e.target.value })} required>
+              <select value={categoryForm.market_id} onChange={(e) => { setCategoryForm({ ...categoryForm, market_id: e.target.value }); setCategoryFieldErrors((f) => ({ ...f, market_id: "" })); }}>
                 <option value="" disabled>Select market</option>
                 {markets.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
+              {categoryFieldErrors.market_id && <span className="text-[12px] text-brand-red">{categoryFieldErrors.market_id}</span>}
             </div>
           )}
           <div className="flex gap-2.5 mt-1">
