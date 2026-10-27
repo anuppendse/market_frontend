@@ -51,12 +51,14 @@ export default function Markets() {
     setLoading(true);
     setLoadError("");
     try {
-      const [marketsData, usersData] = await Promise.all([
+      // Loaded independently: the market list never depends on the admin list.
+      const [marketsRes, usersRes] = await Promise.allSettled([
         fetchMarkets(),
         fetchUsers({ role: "MARKET_ADMIN" }),
       ]);
-      setMarkets(marketsData);
-      setMarketAdmins(usersData);
+      if (marketsRes.status === "rejected") throw marketsRes.reason;
+      setMarkets(Array.isArray(marketsRes.value) ? marketsRes.value : []);
+      setMarketAdmins(usersRes.status === "fulfilled" ? usersRes.value : []);
     } catch (err) {
       setLoadError(err?.response?.data?.error || "Could not load markets. Please refresh the page.");
     } finally {

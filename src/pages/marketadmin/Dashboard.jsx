@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import KpiCard from "../../components/KpiCard";
 import DataTable from "../../components/DataTable";
-import StatusPill from "../../components/StatusPill";
-import { fetchUsers, fetchShops, fetchGateEntries, fetchBills } from "../../api/endpoints";
+import StatusToggle from "../../components/StatusToggle";
+import { useAuth } from "../../context/AuthContext";
+import { fetchUsers, fetchShops, fetchGateEntries, fetchBills, setUserStatus } from "../../api/endpoints";
 
 export default function Dashboard() {
+  const { user: me } = useAuth();
   const [users, setUsers] = useState([]);
   const [shops, setShops] = useState([]);
   const [gateEntries, setGateEntries] = useState([]);
@@ -21,6 +23,15 @@ export default function Dashboard() {
     );
   }, []);
 
+  async function toggleStatus(u) {
+    try {
+      await setUserStatus(u.id, u.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
+      setUsers(await fetchUsers());
+    } catch (err) {
+      alert(err?.response?.data?.error || "Could not change user status.");
+    }
+  }
+
   const totalWeight = gateEntries.reduce((sum, e) => sum + (e.weight_kg || 0), 0);
   const todayTotal = bills.reduce((sum, b) => sum + b.net_payable, 0);
 
@@ -28,7 +39,14 @@ export default function Dashboard() {
     { key: "name", header: "User" },
     { key: "role_display_name", header: "Role" },
     { key: "mobile", header: "Mobile" },
-    { key: "status", header: "Status", render: (r) => <StatusPill status={r.status} label={r.status === "ACTIVE" ? "Active" : "Suspended"} /> },
+    { key: "status", header: "Status", render: (r) =>
+        // A Market Admin can switch Shop Keepers / Gate Keepers on and off; other rows are view-only.
+        (r.role_name === "SHOPKEEPER" || r.role_name === "GATEKEEPER") && r.id !== me?.id ? (
+          <StatusToggle status={r.status} onClick={() => toggleStatus(r)} />
+        ) : (
+          <StatusToggle status={r.status} disabled />
+        ),
+    },
   ];
 
   return (

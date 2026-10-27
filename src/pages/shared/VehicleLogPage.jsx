@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import DataTable from "../../components/DataTable";
 import StatusPill from "../../components/StatusPill";
 import DateRangePicker from "../../components/DateRangePicker";
+import ExportMenu from "../../components/ExportMenu";
+import ReportPrintSheet from "../../components/ReportPrintSheet";
 import { Toolbar, Spacer } from "../../components/Toolbar";
 import KpiCard from "../../components/KpiCard";
 import { fetchGateEntries } from "../../api/endpoints";
@@ -56,10 +58,6 @@ export default function VehicleLogPage() {
     load();
   }
 
-  function exportPdf() {
-    window.print();
-  }
-
   // Vehicles currently inside (ENTERED) are listed first, newest entry on top;
   // exited vehicles follow below, most recent exit first.
   const sortedEntries = [...entries].sort((a, b) => {
@@ -82,6 +80,15 @@ export default function VehicleLogPage() {
     { key: "entry_status", header: "Status", render: (r) => <StatusPill status={r.entry_status} label={r.entry_status === "ENTERED" ? "Entered" : "Exited"} /> },
   ];
 
+  // Plain-text columns for the PDF / Excel export (the on-screen status pill is JSX).
+  const exportColumns = columns.map((c) =>
+    c.key === "entry_status"
+      ? { key: c.key, header: c.header, render: (r) => (r.entry_status === "ENTERED" ? "Entered" : "Exited") }
+      : c
+  );
+  const exportSections = [{ title: "Vehicle Entry Log", columns: exportColumns, rows: sortedEntries }];
+  const exportPeriod = appliedLabel || `Today (${todayISO()})`;
+
   return (
     <div>
       <div className="grid grid-cols-3 gap-3.5 mb-4.5">
@@ -97,7 +104,12 @@ export default function VehicleLogPage() {
         </span>
         <Spacer />
         <DateRangePicker onApply={handleApply} onClear={handleClear} appliedLabel={appliedLabel} />
-        <button className="btn btn-primary" onClick={exportPdf}>Export PDF/Excel</button>
+        <ExportMenu
+          reportTitle="Vehicle Entry Log"
+          periodLabel={exportPeriod}
+          sections={exportSections}
+          filenameBase="vehicle_entry_log"
+        />
       </Toolbar>
 
       {loadError && (
@@ -109,33 +121,7 @@ export default function VehicleLogPage() {
 
       <DataTable columns={columns} rows={sortedEntries} loading={loading} emptyText="No vehicle movements for this period." />
 
-      <div className="print-only">
-        <h2 style={{ margin: "0 0 4px" }}>APMC Billing System</h2>
-        <h3 style={{ margin: "0 0 4px" }}>Vehicle Entry Log</h3>
-        <p style={{ margin: "0 0 16px", color: "#555" }}>{appliedLabel ? `Period: ${appliedLabel}` : "Today"}</p>
-        <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              {columns.map((c) => (
-                <th key={c.key} style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: "6px 8px" }}>
-                  {c.header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedEntries.map((r, i) => (
-              <tr key={r.id ?? i}>
-                {columns.map((c) => (
-                  <td key={c.key} style={{ borderBottom: "1px solid #eee", padding: "6px 8px" }}>
-                    {c.key === "entry_status" ? (r.entry_status === "ENTERED" ? "Entered" : "Exited") : c.render ? c.render(r) : r[c.key]}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ReportPrintSheet reportTitle="Vehicle Entry Log" periodLabel={exportPeriod} sections={exportSections} />
     </div>
   );
 }

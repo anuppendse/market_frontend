@@ -47,14 +47,14 @@ export default function UsersPage({ isAdmin }) {
   //    accounts.
   // Every other combination gets the same toggle, view-only.
   function canManageStatus(roleName) {
-    if (isAdmin) {
-      return roleName === "ADMIN" || roleName === "MARKET_ADMIN";
-    }
-    return roleName === "SHOPKEEPER" || roleName === "GATEKEEPER";
+    return allowedRoleNames.includes(roleName);
   }
-  // Admin creates Admin / Market Admin only; Market Admin creates
-  // Shop Keeper / Gate Keeper only. Used for both the role dropdown and filter.
-  const allowedRoleNames = isAdmin ? ["ADMIN", "MARKET_ADMIN"] : ["SHOPKEEPER", "GATEKEEPER"];
+  // Admin creates Market Admin / Shop Keeper / Gate Keeper (never another
+  // Admin); Market Admin creates Shop Keeper / Gate Keeper only. Used for the
+  // role dropdown, the role filter, and who can be edited / suspended.
+  const allowedRoleNames = isAdmin
+    ? ["MARKET_ADMIN", "SHOPKEEPER", "GATEKEEPER"]
+    : ["SHOPKEEPER", "GATEKEEPER"];
   const [users, setUsers] = useState([]);
   const [allRoles, setRoles] = useState([]);
   const roles = allRoles.filter((r) => allowedRoleNames.includes(r.name));
@@ -101,6 +101,14 @@ export default function UsersPage({ isAdmin }) {
   }, []);
 
   const formRoleName = roles.find((r) => String(r.id) === String(form.role_id))?.name || "";
+  // Shops offered in the form: only the chosen market's shops (Market Admin: own market),
+  // and only active ones (plus the one already assigned when editing).
+  const formMarketId = isAdmin ? form.market_id : me?.market_id;
+  const marketShops = shops.filter(
+    (s) =>
+      String(s.market_id) === String(formMarketId) &&
+      (s.status !== "INACTIVE" || String(s.id) === String(form.shop_id))
+  );
 
   // Searching starts only after 3 characters; with 1-2 characters the full list stays.
   const term = activeSearchTerm(search).toLowerCase();
@@ -133,7 +141,7 @@ export default function UsersPage({ isAdmin }) {
       email: u.email || "",
       password: "",
       role_id: u.role_id,
-      market_id: u.role_name === "ADMIN" ? "" : u.market_id || "",
+      market_id: u.market_id || "",
       shop_id: u.role_name === "SHOPKEEPER" ? u.shop_id || "" : "",
       status: u.status,
     });
@@ -162,6 +170,15 @@ export default function UsersPage({ isAdmin }) {
     const duplicate = form.mobile.trim()
       ? users.find((u) => u.id !== editingId && (u.mobile || "").trim() === form.mobile.trim())
       : null;
+    const existingMarketAdmin =
+      selectedRole?.name === "MARKET_ADMIN" && form.market_id
+        ? users.find(
+            (u) =>
+              u.id !== editingId &&
+              u.role_name === "MARKET_ADMIN" &&
+              String(u.market_id) === String(form.market_id)
+          )
+        : null;
     const errs = {
       name: fullNameError(form.name),
       username: editingId ? "" : usernameError(form.username),
@@ -172,12 +189,14 @@ export default function UsersPage({ isAdmin }) {
       email: form.email.trim() ? emailError(form.email) : "",
       role_id: requiredSelectError("a role", form.role_id),
       market_id:
-        selectedRole?.name === "ADMIN" && form.market_id ? "Admin does not belong to any market" : "",
+        isAdmin && selectedRole && !form.market_id
+          ? "Please select a market"
+          : selectedRole?.name === "MARKET_ADMIN" && existingMarketAdmin
+          ? `This market already has a Market Admin (${existingMarketAdmin.name}). Only one Market Admin is allowed per market.`
+          : "",
       shop_id:
         selectedRole?.name === "SHOPKEEPER" && !form.shop_id
           ? "Please select a shop for a Shop Keeper"
-          : selectedRole?.name && selectedRole.name !== "SHOPKEEPER" && form.shop_id
-          ? `${selectedRole.display_name} does not have a shop`
           : "",
     };
     setFieldErrors(errs);
@@ -191,9 +210,12 @@ export default function UsersPage({ isAdmin }) {
       email: form.email.trim(),
       role_id: Number(form.role_id),
       market_id: form.market_id ? Number(form.market_id) : null,
-      shop_id: form.shop_id ? Number(form.shop_id) : null,
+      // Only a Shop Keeper has a shop.
+      shop_id: selectedRole?.name === "SHOPKEEPER" && form.shop_id ? Number(form.shop_id) : null,
     };
+    if (!isAdmin) payload.market_id = me?.market_id || null;
     if (!payload.password) delete payload.password;
+    if (editingId) delete payload.username;
 
     try {
       if (editingId) {
@@ -237,7 +259,11 @@ export default function UsersPage({ isAdmin }) {
       header: "Actions",
       render: (r) => (
         <>
-          {!isAdmin && <button className="btn-text" onClick={() => openEdit(r)}>Edit</button>}{" "}
+          {canManageStatus(r.role_name) && r.id !== me?.id && (
+            <>
+              <button className="btn-text" onClick={() => openEdit(r)}>Edit</button>{" "}
+            </>
+          )}
           <button className="btn-text" onClick={() => openHistory(r)}>Login History</button>
         </>
       ),
@@ -325,8 +351,7 @@ export default function UsersPage({ isAdmin }) {
                 setForm({
                   ...form,
                   role_id: e.target.value,
-                  // Admin has no market; only Shop Keepers have a shop.
-                  market_id: rName === "ADMIN" ? "" : form.market_id,
+                  // Only Shop Keepers have a shop.
                   shop_id: rName === "SHOPKEEPER" ? form.shop_id : "",
                 });
                 setFieldErrors((f) => ({ ...f, role_id: "", market_id: "", shop_id: "" }));
@@ -343,38 +368,39 @@ export default function UsersPage({ isAdmin }) {
               <label>Market</label>
               <select
                 value={form.market_id}
-                onChange={(e) => setForm({ ...form, market_id: e.target.value })}
-                disabled={formRoleName === "ADMIN"}
+                onChange={(e) => {
+                  // Changing the market clears the shop (shops belong to one market).
+                  setForm({ ...form, market_id: e.target.value, shop_id: "" });
+                  setFieldErrors((f) => ({ ...f, market_id: "", shop_id: "" }));
+                }}
+                disabled={!form.role_id}
               >
-                <option value="">— None —</option>
+                <option value="">{form.role_id ? "Select market" : "Select a role first"}</option>
                 {markets.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
-              {formRoleName === "ADMIN" && (
-                <div className="text-[11.5px] text-amber-600 mt-1">Admin does not have a market, so a market cannot be assigned.</div>
-              )}
               {fieldErrors.market_id && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.market_id}</div>}
             </div>
           )}
-          {!isAdmin && (
-          <div className="field">
-            <label>Shop <span className="text-inksoft font-normal">(for Shop Keepers)</span></label>
-            <select
-              value={form.shop_id}
-              onChange={(e) => { setForm({ ...form, shop_id: e.target.value }); setFieldErrors((f) => ({ ...f, shop_id: "" })); }}
-              disabled={formRoleName !== "SHOPKEEPER"}
-            >
-              <option value="">— None —</option>
-              {shops.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-            {formRoleName === "GATEKEEPER" && (
-              <div className="text-[11.5px] text-amber-600 mt-1">Gate Keeper does not have a shop, so a shop cannot be assigned.</div>
-            )}
-            {fieldErrors.shop_id && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.shop_id}</div>}
-          </div>
+          {formRoleName === "SHOPKEEPER" && (
+            <div className="field">
+              <label>Shop</label>
+              <select
+                value={form.shop_id}
+                onChange={(e) => { setForm({ ...form, shop_id: e.target.value }); setFieldErrors((f) => ({ ...f, shop_id: "" })); }}
+                disabled={!formMarketId}
+              >
+                <option value="">{formMarketId ? "Select shop" : "Select a market first"}</option>
+                {marketShops.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              {formMarketId && marketShops.length === 0 && (
+                <div className="text-[11.5px] text-amber-600 mt-1">No shops available in this market yet. Add a shop first.</div>
+              )}
+              {fieldErrors.shop_id && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.shop_id}</div>}
+            </div>
           )}
           {editingId && (
             <div className="field">

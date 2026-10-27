@@ -122,6 +122,7 @@ export function businessNameError(label, value) {
   if (!v) return `${label} is required`;
   if (v.length < 2 || v.length > 100) return `${label} must be 2 to 100 characters`;
   if (!BUSINESS_NAME_PATTERN.test(v)) return `${label} contains invalid characters`;
+  if (!/[A-Za-z]/.test(v)) return `${label} must contain letters (not only numbers)`;
   return "";
 }
 

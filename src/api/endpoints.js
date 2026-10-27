@@ -102,8 +102,11 @@ export const updateFarmer = (id, payload) =>
 export const deleteFarmer = (id) => client.delete(`/farmers/${id}`).then((r) => r.data);
 
 // ---- Vehicles / Gate Entries ----------------------------------------------
+// tz_offset lets the server treat "today" as the user's local day (times are stored in UTC).
+const tzParam = () => ({ tz_offset: new Date().getTimezoneOffset() });
+
 export const fetchGateEntries = (params = {}) =>
-  client.get("/vehicles/gate-entries", { params }).then((r) => r.data);
+  client.get("/vehicles/gate-entries", { params: { ...tzParam(), ...params } }).then((r) => r.data);
 
 // The vehicle master list -- used to power the Vehicle No autocomplete on
 // the entry form (which existing vehicles have visited before).
@@ -128,4 +131,4 @@ export const fetchSalesReport = (params = {}) =>
   client.get("/reports/sales", { params }).then((r) => r.data);
 
 export const fetchGateActivityReport = (params = {}) =>
-  client.get("/reports/gate-activity", { params }).then((r) => r.data);
+  client.get("/reports/gate-activity", { params: { ...tzParam(), ...params } }).then((r) => r.data);

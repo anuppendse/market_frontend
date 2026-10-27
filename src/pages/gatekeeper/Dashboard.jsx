@@ -12,13 +12,23 @@ export default function Dashboard() {
   const [selected, setSelected] = useState(null);
   const [loadError, setLoadError] = useState("");
 
+  const [now, setNow] = useState(new Date());
+
   useEffect(() => {
     load();
+    // Real-time: the clock ticks every second and the list refreshes every 30 seconds.
+    const tick = setInterval(() => setNow(new Date()), 1000);
+    const refresh = setInterval(() => load(true), 30000);
+    return () => {
+      clearInterval(tick);
+      clearInterval(refresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function load() {
-    setLoading(true);
-    setLoadError("");
+  function load(silent = false) {
+    if (!silent) setLoading(true);
+    if (!silent) setLoadError("");
     // Filtered server-side to today's date, rather than fetching every
     // record ever logged and cutting it down in the browser -- keeps this
     // fast no matter how much history has piled up.
@@ -72,6 +82,10 @@ export default function Dashboard() {
 
   return (
     <div>
+      <div className="flex items-center justify-between mb-3 text-[12.5px] text-inksoft">
+        <span>{now.toLocaleDateString([], { weekday: "long", day: "2-digit", month: "short", year: "numeric" })}</span>
+        <span className="font-semibold text-green-800">{now.toLocaleTimeString()}</span>
+      </div>
       <div className="grid grid-cols-3 gap-3.5 mb-4.5">
         <KpiCard label="Vehicles Today" value={uniqueVehiclesToday} />
         <KpiCard label="Currently Inside" value={inside} tone="amber" />
@@ -80,7 +94,7 @@ export default function Dashboard() {
 
       {loadError && (
         <div className="mb-3 text-[12.5px] text-brand-red bg-[#F5E1DE] rounded-md px-3 py-2">
-          {loadError} <button type="button" className="btn-text" onClick={load}>Retry</button>
+          {loadError} <button type="button" className="btn-text" onClick={() => load()}>Retry</button>
         </div>
       )}
       <div className="card">

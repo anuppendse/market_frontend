@@ -66,6 +66,7 @@ export default function GateOperations() {
 
   const [exitEntryId, setExitEntryId] = useState("");
   const [exitErr, setExitErr] = useState("");
+  const [exitSearch, setExitSearch] = useState("");
   const [message, setMessage] = useState("");
   const [errors, setErrors] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -138,6 +139,16 @@ export default function GateOperations() {
   }
 
   const openEntries = entries.filter((e) => e.entry_status === "ENTERED");
+  // Exit search: matches vehicle number (spaces/dashes ignored), gate pass number or driver name.
+  const exitTerm = exitSearch.trim().toLowerCase();
+  const exitTermVehicle = normalizeVehicleNo(exitSearch).toLowerCase();
+  const exitMatches = openEntries.filter(
+    (e) =>
+      !exitTerm ||
+      (exitTermVehicle && normalizeVehicleNo(e.vehicle_no).toLowerCase().includes(exitTermVehicle)) ||
+      (e.gate_pass_no || "").toLowerCase().includes(exitTerm) ||
+      (e.driver_name || "").toLowerCase().includes(exitTerm)
+  );
 
   // Existing vehicles whose normalized number starts with what's typed so
   // far -- "MH12" matches "MH12AB1234", typing "MH" lists everything.
@@ -294,6 +305,7 @@ export default function GateOperations() {
     try {
       await logVehicleExit(exitEntryId, {});
       setExitEntryId("");
+      setExitSearch("");
       setMessage("Vehicle exit logged.");
       loadAll();
     } catch (err) {
@@ -502,14 +514,32 @@ export default function GateOperations() {
             <form onSubmit={submitExit} noValidate className="grid grid-cols-2 gap-4">
               <div className="field col-span-2">
                 <label>Vehicle / Gate Pass <span className="text-brand-red">*</span></label>
-                <select value={exitEntryId} onChange={(e) => { setExitEntryId(e.target.value); setExitErr(""); }}>
-                  <option value="" disabled>Select an entry currently inside</option>
-                  {openEntries.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.gate_pass_no} — {e.vehicle_no} (Entered {new Date(e.entry_time).toLocaleTimeString()})
-                    </option>
+                <input
+                  value={exitSearch}
+                  onChange={(e) => setExitSearch(e.target.value)}
+                  placeholder="Search by vehicle no, gate pass no or driver name"
+                  autoComplete="off"
+                />
+                <div className="border border-line rounded-md mt-2 max-h-[240px] overflow-y-auto">
+                  {exitMatches.length === 0 && (
+                    <div className="px-3 py-2 text-[12.5px] text-inksoft">
+                      {openEntries.length === 0 ? "No vehicles are currently inside." : "No matching vehicle found."}
+                    </div>
+                  )}
+                  {exitMatches.map((e) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => { setExitEntryId(String(e.id)); setExitErr(""); }}
+                      className={`flex items-center justify-between w-full text-left px-3 py-2 text-[12.5px] border-b border-line last:border-b-0 ${
+                        String(exitEntryId) === String(e.id) ? "bg-[#E1EEE0] font-semibold" : "hover:bg-[#F3F6F2]"
+                      }`}
+                    >
+                      <span>{e.vehicle_no} <span className="text-inksoft font-normal">· {e.gate_pass_no}{e.driver_name ? ` · ${e.driver_name}` : ""}</span></span>
+                      <span className="text-inksoft text-[11px]">Entered {new Date(e.entry_time).toLocaleTimeString()}</span>
+                    </button>
                   ))}
-                </select>
+                </div>
                 {exitErr && <div className="text-[11.5px] text-brand-red mt-1">{exitErr}</div>}
                 {openEntries.length === 0 && !loading && (
                   <div className="text-[11.5px] text-inksoft mt-1">No vehicles are currently inside.</div>
