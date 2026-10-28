@@ -207,3 +207,12 @@ export function gatePassError(value) {
 export function hasErrors(errs) {
   return Object.values(errs).some(Boolean);
 }
+
+// Market fees: a number greater than 0.
+export function marketFeeError(value) {
+  const v = String(value ?? "").trim();
+  if (!v) return "Market fees is required";
+  if (!/^\d+(\.\d{1,2})?$/.test(v)) return "Market fees must be a number";
+  if (!(Number(v) > 0)) return "Market fees must be greater than 0";
+  return "";
+}

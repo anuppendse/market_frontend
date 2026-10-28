@@ -47,7 +47,7 @@ export default function UsersPage({ isAdmin }) {
   //    accounts.
   // Every other combination gets the same toggle, view-only.
   function canManageStatus(roleName) {
-    return allowedRoleNames.includes(roleName);
+    return isAdmin ? roleName === "MARKET_ADMIN" : ["SHOPKEEPER", "GATEKEEPER"].includes(roleName);
   }
   // Admin creates Market Admin / Shop Keeper / Gate Keeper (never another
   // Admin); Market Admin creates Shop Keeper / Gate Keeper only. Used for the
@@ -58,11 +58,14 @@ export default function UsersPage({ isAdmin }) {
   const [users, setUsers] = useState([]);
   const [allRoles, setRoles] = useState([]);
   const roles = allRoles.filter((r) => allowedRoleNames.includes(r.name));
+  // Admin can ADD only Market Admins (existing Shop/Gate Keepers can still be edited).
+  const addRoles = isAdmin ? roles.filter((r) => r.name === "MARKET_ADMIN") : roles;
   const [markets, setMarkets] = useState([]);
   const [shops, setShops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
+  const [marketFilter, setMarketFilter] = useState("ALL");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -84,7 +87,8 @@ export default function UsersPage({ isAdmin }) {
         isAdmin ? fetchMarkets() : Promise.resolve([]),
         fetchShops().catch(() => []),
       ]);
-      setUsers(usersData);
+      // The Admin dashboard never shows Admin accounts.
+      setUsers(usersData.filter((u) => u.role_name !== "ADMIN"));
       setRoles(rolesData);
       setMarkets(marketsData);
       setShops(shopsData);
@@ -120,9 +124,20 @@ export default function UsersPage({ isAdmin }) {
         (u.name || "").toLowerCase().includes(term) ||
         (u.mobile || "").includes(term) ||
         (u.username || "").toLowerCase().includes(term);
-      return matchesRole && matchesSearch;
-    });
-  }, [users, roleFilter, term]);
+      const matchesMarket = marketFilter === "ALL" || String(u.market_id) === String(marketFilter);
+      return matchesRole && matchesMarket && matchesSearch;
+    }).sort(
+      // Sorted alphabetically by market, then by user name.
+      (a, b) =>
+        (a.market_name || "~").localeCompare(b.market_name || "~", undefined, { sensitivity: "base" }) ||
+        (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })
+    );
+  }, [users, roleFilter, marketFilter, term]);
+
+  const sortedMarkets = useMemo(
+    () => [...markets].sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })),
+    [markets]
+  );
 
   function openAdd() {
     setEditingId(null);
@@ -214,6 +229,7 @@ export default function UsersPage({ isAdmin }) {
       shop_id: selectedRole?.name === "SHOPKEEPER" && form.shop_id ? Number(form.shop_id) : null,
     };
     if (!isAdmin) payload.market_id = me?.market_id || null;
+    delete payload.status; // status is changed only from the table toggle
     if (!payload.password) delete payload.password;
     if (editingId) delete payload.username;
 
@@ -279,6 +295,13 @@ export default function UsersPage({ isAdmin }) {
           onChange={setRoleFilter}
           options={[{ value: "ALL", label: "Role: All" }, ...roles.map((r) => ({ value: r.name, label: r.display_name }))]}
         />
+        {isAdmin && (
+          <FilterSelect
+            value={marketFilter}
+            onChange={setMarketFilter}
+            options={[{ value: "ALL", label: "Market: All" }, ...sortedMarkets.map((m) => ({ value: String(m.id), label: m.name }))]}
+          />
+        )}
         <Spacer />
         <button className="btn btn-primary" onClick={openAdd}>+ Add User</button>
       </Toolbar>
@@ -357,7 +380,7 @@ export default function UsersPage({ isAdmin }) {
                 setFieldErrors((f) => ({ ...f, role_id: "", market_id: "", shop_id: "" }));
               }}>
               <option value="" disabled>Select role</option>
-              {roles.map((r) => (
+              {addRoles.map((r) => (
                 <option key={r.id} value={r.id}>{r.display_name}</option>
               ))}
             </select>
@@ -400,15 +423,6 @@ export default function UsersPage({ isAdmin }) {
                 <div className="text-[11.5px] text-amber-600 mt-1">No shops available in this market yet. Add a shop first.</div>
               )}
               {fieldErrors.shop_id && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.shop_id}</div>}
-            </div>
-          )}
-          {editingId && (
-            <div className="field">
-              <label>Status</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Suspended</option>
-              </select>
             </div>
           )}
           <div className="col-span-2 flex gap-2.5 mt-1">

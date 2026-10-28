@@ -132,3 +132,15 @@ export const fetchSalesReport = (params = {}) =>
 
 export const fetchGateActivityReport = (params = {}) =>
   client.get("/reports/gate-activity", { params: { ...tzParam(), ...params } }).then((r) => r.data);
+
+// ---- States / Districts / Pincodes (tables: states, districts, pincodes) ----
+// Type-ahead: pass what the user typed in q to get the matching rows.
+export const fetchStates = (q = "") =>
+  client.get("/geo/states", { params: q ? { q } : {} }).then((r) => r.data);
+
+export const fetchDistricts = (stateId, q = "") =>
+  client.get("/geo/districts", { params: { state_id: stateId, ...(q ? { q } : {}) } }).then((r) => r.data);
+
+// Is this pincode in the pincodes table for this state + district? -> { valid, error }
+export const checkPincode = (stateId, districtId, pincode) =>
+  client.get("/geo/pincodes/check", { params: { state_id: stateId, district_id: districtId, pincode } }).then((r) => r.data);
