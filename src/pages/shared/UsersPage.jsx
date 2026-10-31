@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import DataTable from "../../components/DataTable";
 import Modal from "../../components/Modal";
 import StatusToggle from "../../components/StatusToggle";
@@ -104,7 +105,17 @@ export default function UsersPage({ isAdmin }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Coming from Shops -> "Add Shopkeeper": open the Add User form straight away.
+  const location = useLocation();
+  useEffect(() => {
+    if (location.state?.openAdd) openAdd();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
+
   const formRoleName = roles.find((r) => String(r.id) === String(form.role_id))?.name || "";
+  // Shop typeahead (Shop Keeper): text typed + whether the suggestion list is open.
+  const [shopText, setShopText] = useState("");
+  const [shopOpen, setShopOpen] = useState(false);
   // Shops offered in the form: only the chosen market's shops (Market Admin: own market),
   // and only active ones (plus the one already assigned when editing).
   const formMarketId = isAdmin ? form.market_id : me?.market_id;
@@ -113,6 +124,22 @@ export default function UsersPage({ isAdmin }) {
       String(s.market_id) === String(formMarketId) &&
       (s.status !== "INACTIVE" || String(s.id) === String(form.shop_id))
   );
+
+  // Which shops already have a Shop Keeper (ignoring the user being edited).
+  const assignedShopOwner = {};
+  users.forEach((u) => {
+    if (u.role_name === "SHOPKEEPER" && u.shop_id && u.id !== editingId) assignedShopOwner[u.shop_id] = u.name;
+  });
+  // Registered shops of this market matching what is typed. Shops WITHOUT a
+  // shopkeeper come first, shops that already have one come below.
+  const typedShop = shopText.trim().toLowerCase();
+  const shopMatches = marketShops
+    .filter((s) => !typedShop || (s.name || "").toLowerCase().includes(typedShop))
+    .sort((a, b) => {
+      const aa = assignedShopOwner[a.id] ? 1 : 0;
+      const bb = assignedShopOwner[b.id] ? 1 : 0;
+      return aa - bb || (a.name || "").localeCompare(b.name || "");
+    });
 
   // Searching starts only after 3 characters; with 1-2 characters the full list stays.
   const term = activeSearchTerm(search).toLowerCase();
@@ -144,6 +171,8 @@ export default function UsersPage({ isAdmin }) {
     setForm({ ...EMPTY_FORM, market_id: isAdmin ? "" : me?.market_id || "" });
     setSaveError("");
     setFieldErrors({});
+    setShopText("");
+    setShopOpen(false);
     setModalOpen(true);
   }
 
@@ -160,6 +189,8 @@ export default function UsersPage({ isAdmin }) {
       shop_id: u.role_name === "SHOPKEEPER" ? u.shop_id || "" : "",
       status: u.status,
     });
+    setShopText(u.role_name === "SHOPKEEPER" ? u.shop_name || "" : "");
+    setShopOpen(false);
     setSaveError("");
     setFieldErrors({});
     setModalOpen(true);
@@ -211,7 +242,7 @@ export default function UsersPage({ isAdmin }) {
           : "",
       shop_id:
         selectedRole?.name === "SHOPKEEPER" && !form.shop_id
-          ? "Please select a shop for a Shop Keeper"
+          ? "Please select a shop from the list"
           : "",
     };
     setFieldErrors(errs);
@@ -220,7 +251,7 @@ export default function UsersPage({ isAdmin }) {
     const payload = {
       ...form,
       name: cleanName(form.name),
-      username: form.username.trim(),
+      username: form.username.replace(/\s+$/, ""),
       mobile: form.mobile.trim(),
       email: form.email.trim(),
       role_id: Number(form.role_id),
@@ -249,6 +280,10 @@ export default function UsersPage({ isAdmin }) {
   async function toggleStatus(u) {
     try {
       await setUserStatus(u.id, u.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
+      // Refresh: back to the default view (search cleared, filters on first option).
+      setSearch("");
+      setRoleFilter("ALL");
+      setMarketFilter("ALL");
       loadAll();
     } catch (err) {
       alert(err?.response?.data?.error || "Could not change user status.");
@@ -407,20 +442,51 @@ export default function UsersPage({ isAdmin }) {
             </div>
           )}
           {formRoleName === "SHOPKEEPER" && (
-            <div className="field">
-              <label>Shop</label>
-              <select
-                value={form.shop_id}
-                onChange={(e) => { setForm({ ...form, shop_id: e.target.value }); setFieldErrors((f) => ({ ...f, shop_id: "" })); }}
+            <div className="field col-span-2 relative">
+              <label>Shop <span className="text-brand-red">*</span></label>
+              <input
+                value={shopText}
                 disabled={!formMarketId}
-              >
-                <option value="">{formMarketId ? "Select shop" : "Select a market first"}</option>
-                {marketShops.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              {formMarketId && marketShops.length === 0 && (
-                <div className="text-[11.5px] text-amber-600 mt-1">No shops available in this market yet. Add a shop first.</div>
+                autoComplete="off"
+                maxLength={100}
+                placeholder={formMarketId ? "Type shop name and select from the list" : "Select a market first"}
+                onFocus={() => setShopOpen(true)}
+                onChange={(e) => {
+                  // Typing again clears the chosen shop: only a list selection is final.
+                  setShopText(e.target.value);
+                  setShopOpen(true);
+                  setForm({ ...form, shop_id: "" });
+                  setFieldErrors((f) => ({ ...f, shop_id: "" }));
+                }}
+              />
+              {form.shop_id && <div className="text-[11px] text-[#2A6B36] mt-1">Selected: {shopText}</div>}
+              {shopOpen && formMarketId && !form.shop_id && (
+                <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-line rounded-card shadow-2xl w-full max-h-[220px] overflow-y-auto">
+                  {shopMatches.length === 0 ? (
+                    <div className="px-3 py-2 text-[12.5px] text-brand-red">
+                      Shop is not registered. Please register the shop first.
+                    </div>
+                  ) : (
+                    shopMatches.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          setForm({ ...form, shop_id: String(s.id) });
+                          setShopText(s.name);
+                          setShopOpen(false);
+                          setFieldErrors((f) => ({ ...f, shop_id: "" }));
+                        }}
+                        className="flex items-center justify-between w-full text-left px-3 py-2 text-[12.5px] border-b border-line last:border-b-0 hover:bg-[#F3F6F2]"
+                      >
+                        <span className="font-semibold">{s.name}</span>
+                        <span className={`text-[11px] ${assignedShopOwner[s.id] ? "text-inksoft" : "text-[#2A6B36]"}`}>
+                          {assignedShopOwner[s.id] ? `Assigned: ${assignedShopOwner[s.id]}` : "Not assigned"}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
               )}
               {fieldErrors.shop_id && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.shop_id}</div>}
             </div>

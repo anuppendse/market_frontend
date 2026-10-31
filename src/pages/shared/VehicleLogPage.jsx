@@ -4,26 +4,30 @@ import StatusPill from "../../components/StatusPill";
 import DateRangePicker from "../../components/DateRangePicker";
 import ExportMenu from "../../components/ExportMenu";
 import ReportPrintSheet from "../../components/ReportPrintSheet";
-import { Toolbar, Spacer } from "../../components/Toolbar";
+import { Toolbar, Spacer, FilterSelect } from "../../components/Toolbar";
 import KpiCard from "../../components/KpiCard";
-import { fetchGateEntries } from "../../api/endpoints";
+import { fetchGateEntries, fetchMarkets } from "../../api/endpoints";
 import { todayISO } from "../../utils/dateRanges";
 
 const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString() : "—");
 const fmtDateTime = (v) =>
   v ? new Date(v).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 
-export default function VehicleLogPage() {
+export default function VehicleLogPage({ isAdmin = false }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [appliedLabel, setAppliedLabel] = useState(null);
   const [lastParams, setLastParams] = useState(null);
+  // Admin only: filter the log by market ("ALL" = every market).
+  const [markets, setMarkets] = useState([]);
+  const [marketFilter, setMarketFilter] = useState("ALL");
 
   // Default view is TODAY's gate log. Always ends loading -- even when the
   // server fails -- so the page can never sit on "Loading..." forever.
-  async function load(params) {
-    const effective = params || { date_from: todayISO(), date_to: todayISO() };
+  async function load(params, market = marketFilter) {
+    const effective = { ...(params || { date_from: todayISO(), date_to: todayISO() }) };
+    if (isAdmin && market !== "ALL") effective.market_id = market;
     setLastParams(params || null);
     setLoading(true);
     setLoadError("");
@@ -45,8 +49,14 @@ export default function VehicleLogPage() {
 
   useEffect(() => {
     load();
+    if (isAdmin) fetchMarkets().then((m) => setMarkets(Array.isArray(m) ? m : [])).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function handleMarketChange(value) {
+    setMarketFilter(value);
+    load(lastParams, value);
+  }
 
   function handleApply(period, date_from, date_to, label) {
     setAppliedLabel(label);
@@ -70,6 +80,7 @@ export default function VehicleLogPage() {
   const totalWeight = entries.reduce((sum, e) => sum + (Number(e.weight_kg) || 0), 0);
 
   const columns = [
+    ...(isAdmin ? [{ key: "market_name", header: "Market", render: (r) => r.market_name || "—" }] : []),
     { key: "vehicle_no", header: "Vehicle No" },
     { key: "driver_name", header: "Driver Name" },
     { key: "gate_pass_no", header: "Gate Pass No" },
@@ -103,6 +114,13 @@ export default function VehicleLogPage() {
           {appliedLabel ? ` — ${appliedLabel}` : " — today"}
         </span>
         <Spacer />
+        {isAdmin && (
+          <FilterSelect
+            value={marketFilter}
+            onChange={handleMarketChange}
+            options={[{ value: "ALL", label: "Market: All" }, ...markets.map((m) => ({ value: String(m.id), label: m.name }))]}
+          />
+        )}
         <DateRangePicker onApply={handleApply} onClear={handleClear} appliedLabel={appliedLabel} />
         <ExportMenu
           reportTitle="Vehicle Entry Log"

@@ -60,6 +60,7 @@ export default function GateOperations() {
   const [shopErr, setShopErr] = useState("");
   const [vehicles, setVehicles] = useState([]);
   const [shops, setShops] = useState([]);
+  const [shopSearch, setShopSearch] = useState("");
   const [vehicleDropdownOpen, setVehicleDropdownOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const vehicleFieldRef = useRef(null);
@@ -271,6 +272,7 @@ export default function GateOperations() {
       setPreviewData(issued);
       setPreviewOpen(true);
       setEntryForm(EMPTY_ENTRY);
+      setShopSearch("");
       setVehicleNoErr("");
       setDriverErr("");
       setWeightErr("");
@@ -442,24 +444,40 @@ export default function GateOperations() {
 
               <div className="field col-span-2">
                 <label>Shop(s) <span className="text-brand-red">*</span> <span className="text-inksoft font-normal">select at least one</span></label>
+                <input
+                  value={shopSearch}
+                  autoComplete="off"
+                  placeholder="Type shop name to search"
+                  disabled={shops.length === 0}
+                  className="mb-2"
+                  onChange={(e) => setShopSearch(e.target.value)}
+                />
                 <div className={`border rounded-md max-h-[170px] overflow-y-auto p-2 grid grid-cols-2 gap-x-4 gap-y-1 ${shopErr ? "border-brand-red" : "border-line"}`}>
                   {shops.length === 0 && (
                     <div className="col-span-2 text-[12.5px] text-inksoft px-1 py-1">
                       {loading ? "Loading shops..." : "No active shops available in this market."}
                     </div>
                   )}
-                  {shops.map((s) => (
-                    <label key={s.id} className="items-center gap-2 text-[12.5px] cursor-pointer py-0.5" style={{ display: "flex", fontWeight: 400, marginBottom: 0 }}>
-                      <input
-                        type="checkbox"
-                        style={{ width: "auto", padding: 0 }}
-                        checked={entryForm.shop_ids.includes(s.id)}
-                        onChange={() => toggleShop(s.id)}
-                      />
-                      <span>{s.name}</span>
-                    </label>
-                  ))}
+                  {shops
+                    .filter((s) => !shopSearch.trim() || (s.name || "").toLowerCase().includes(shopSearch.trim().toLowerCase()))
+                    .map((s) => (
+                      <label key={s.id} className="items-center gap-2 text-[12.5px] cursor-pointer py-0.5" style={{ display: "flex", fontWeight: 400, marginBottom: 0 }}>
+                        <input
+                          type="checkbox"
+                          style={{ width: "auto", padding: 0 }}
+                          checked={entryForm.shop_ids.includes(s.id)}
+                          onChange={() => toggleShop(s.id)}
+                        />
+                        <span>{s.name}</span>
+                      </label>
+                    ))}
+                  {shops.length > 0 && shopSearch.trim() && !shops.some((s) => (s.name || "").toLowerCase().includes(shopSearch.trim().toLowerCase())) && (
+                    <div className="col-span-2 text-[12.5px] text-inksoft px-1 py-1">No matching shop found</div>
+                  )}
                 </div>
+                {entryForm.shop_ids.length > 0 && (
+                  <div className="text-[11.5px] text-inksoft mt-1">{entryForm.shop_ids.length} shop(s) selected</div>
+                )}
                 {shopErr && <div className="text-[11.5px] text-brand-red mt-1">{shopErr}</div>}
               </div>
 

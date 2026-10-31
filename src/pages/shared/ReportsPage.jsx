@@ -1,22 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DataTable from "../../components/DataTable";
 import DateRangePicker from "../../components/DateRangePicker";
 import ExportMenu from "../../components/ExportMenu";
 import ReportPrintSheet from "../../components/ReportPrintSheet";
-import { Toolbar, Spacer } from "../../components/Toolbar";
-import { fetchSalesReport, fetchGateActivityReport } from "../../api/endpoints";
+import { Toolbar, Spacer, FilterSelect } from "../../components/Toolbar";
+import { fetchSalesReport, fetchGateActivityReport, fetchMarkets } from "../../api/endpoints";
 
-export default function ReportsPage({ showSales = true, showGateActivity = true }) {
+export default function ReportsPage({ showSales = true, showGateActivity = true, isAdmin = false }) {
   const [sales, setSales] = useState([]);
   const [gateActivity, setGateActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(null); // null = default, unfiltered day-by-day view
   const [appliedLabel, setAppliedLabel] = useState(null);
   const [loadErrors, setLoadErrors] = useState([]);
+  // Admin only: filter both reports by market ("ALL" = every market).
+  const [markets, setMarkets] = useState([]);
+  const [marketFilter, setMarketFilter] = useState("ALL");
+  const rangeRef = useRef({}); // the date range currently applied
 
   // Sales and gate activity load independently: if one fails the other still
   // shows, and the page never stays stuck on "Loading...".
-  async function load(params = {}) {
+  async function load(range = rangeRef.current, market = marketFilter) {
+    const params = { ...range };
+    if (isAdmin && market !== "ALL") params.market_id = market;
     setLoading(true);
     const [salesRes, gateRes] = await Promise.allSettled([
       showSales ? fetchSalesReport(params) : Promise.resolve([]),
@@ -36,20 +42,32 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
     load();
   }, [showSales, showGateActivity]);
 
+  useEffect(() => {
+    if (isAdmin) fetchMarkets().then((m) => setMarkets(Array.isArray(m) ? m : [])).catch(() => {});
+  }, [isAdmin]);
+
+  function handleMarketChange(value) {
+    setMarketFilter(value);
+    load(rangeRef.current, value);
+  }
+
   function handleApply(newPeriod, date_from, date_to, label) {
     setPeriod(newPeriod);
     setAppliedLabel(label);
-    load({ period: newPeriod, date_from, date_to });
+    rangeRef.current = { period: newPeriod, date_from, date_to };
+    load(rangeRef.current);
   }
 
   function handleClear() {
     setPeriod(null);
     setAppliedLabel(null);
-    load();
+    rangeRef.current = {};
+    load({});
   }
 
   const salesColumns = [
     { key: "bill_date", header: "Date" },
+    ...(isAdmin ? [{ key: "market_name", header: "Market", render: (r) => r.market_name || "—" }] : []),
     { key: "bill_count", header: "Bills" },
     { key: "gross_total", header: "Gross Amount", render: (r) => `₹${Number(r.gross_total || 0).toLocaleString("en-IN")}` },
     { key: "commission_total", header: "Commission", render: (r) => `₹${Number(r.commission_total || 0).toLocaleString("en-IN")}` },
@@ -59,6 +77,7 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
 
   const gateColumns = [
     { key: "day", header: "Date" },
+    ...(isAdmin ? [{ key: "market_name", header: "Market", render: (r) => r.market_name || "—" }] : []),
     { key: "entries", header: "Entries" },
     { key: "exits", header: "Exits" },
     { key: "unique_vehicles", header: "Unique Vehicles" },
@@ -82,6 +101,13 @@ export default function ReportsPage({ showSales = true, showGateActivity = true 
   return (
     <div>
       <Toolbar>
+        {isAdmin && (
+          <FilterSelect
+            value={marketFilter}
+            onChange={handleMarketChange}
+            options={[{ value: "ALL", label: "Market: All" }, ...markets.map((m) => ({ value: String(m.id), label: m.name }))]}
+          />
+        )}
         <DateRangePicker onApply={handleApply} onClear={handleClear} appliedLabel={appliedLabel} />
         <Spacer />
         <ExportMenu reportTitle={reportTitle} periodLabel={appliedLabel} sections={sections} filenameBase={filenameBase} />

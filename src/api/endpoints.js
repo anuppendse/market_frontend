@@ -114,7 +114,8 @@ export const fetchVehicles = (params = {}) =>
   client.get("/vehicles", { params }).then((r) => r.data);
 
 export const logVehicleEntry = (payload) =>
-  client.post("/vehicles/gate-entries/entry", payload).then((r) => r.data);
+  // tz_offset lets the server number the gate pass with the user's local date.
+  client.post("/vehicles/gate-entries/entry", { tz_offset: new Date().getTimezoneOffset(), ...payload }).then((r) => r.data);
 
 export const logVehicleExit = (entryId, payload = {}) =>
   client.post(`/vehicles/gate-entries/${entryId}/exit`, payload).then((r) => r.data);

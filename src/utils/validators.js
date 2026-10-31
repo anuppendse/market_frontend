@@ -82,8 +82,10 @@ export function requiredSelectError(label, value) {
 
 // Username: 4-30 chars, starts with a letter, then letters/digits/dot/underscore.
 export function usernameError(value) {
-  const v = (value || "").trim();
+  // Spaces at the END are ignored (removed before saving); spaces at the start or middle are an error.
+  const v = (value || "").replace(/\s+$/, "");
   if (!v) return "Username is required";
+  if (/\s/.test(v)) return "Username cannot contain spaces";
   if (v.length < 4 || v.length > 30) return "Username must be 4 to 30 characters";
   if (!USERNAME_PATTERN.test(v)) {
     return "Username must start with a letter and contain only letters, numbers, dots and underscores";

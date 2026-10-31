@@ -69,7 +69,7 @@ export default function Billing() {
     const [farmersRes, commoditiesRes, gateRes, billsRes] = await Promise.allSettled([
       fetchFarmers(),
       fetchCommodities(),
-      fetchGateEntries(),
+      fetchGateEntries({ entry_status: "ENTERED" }), // only vehicles still inside, not exited ones
       fetchBills(),
     ]);
     const problems = [];
@@ -134,7 +134,7 @@ export default function Billing() {
     setError("");
     const errs = {
       farmer: farmerId ? "" : "Please select a farmer",
-      gatePass: gatePassError(gatePassNo),
+      gatePass: !gatePassNo.trim() ? "Gate pass number is required" : gatePassError(gatePassNo),
       marketFee: amountError("Market fee", marketFee), // required, must be greater than 0
     };
     const lineErrs = {};
@@ -172,7 +172,7 @@ export default function Billing() {
     return {
       shop_id: user.shop_id,
       farmer_id: Number(farmerId),
-      gate_pass_no: gatePassNo || undefined,
+      gate_pass_no: gatePassNo.trim(),
       market_fee: Number(marketFee),
       line_items,
     };
@@ -246,17 +246,17 @@ export default function Billing() {
                 {fieldErrors.farmer && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.farmer}</div>}
               </div>
               <div className="field">
-                <label>Gate Pass No <span className="text-inksoft font-normal">optional</span></label>
+                <label>Gate Pass No <span className="text-brand-red">*</span></label>
                 <input
                   list="gate-pass-options"
                   value={gatePassNo}
                   onChange={(e) => { setGatePassNo(e.target.value); setFieldErrors((f) => ({ ...f, gatePass: "" })); }}
                   maxLength={30}
-                  placeholder="e.g. GP-1001"
+                  placeholder="e.g. GP-01-920162-00001"
                 />
                 {fieldErrors.gatePass && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.gatePass}</div>}
                 <datalist id="gate-pass-options">
-                  {gateEntries.map((g) => (
+                  {gateEntries.filter((g) => g.entry_status === "ENTERED").map((g) => (
                     <option key={g.id} value={g.gate_pass_no}>{g.vehicle_no}</option>
                   ))}
                 </datalist>

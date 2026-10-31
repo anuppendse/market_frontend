@@ -197,6 +197,9 @@ export default function Markets() {
   async function toggleStatus(m) {
     try {
       await setMarketStatus(m.id, m.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
+      // Refresh: back to the default view (search cleared, filter on first option).
+      setSearch("");
+      setStatusFilter("ALL");
       loadAll();
     } catch (err) {
       alert(err?.response?.data?.error || "Could not change market status.");
@@ -361,7 +364,7 @@ export default function Markets() {
           </div>
           <div className="field">
             <label>Pincode</label>
-            <input value={form.pincode} inputMode="numeric" maxLength={6} placeholder="6-digit pincode" onChange={(e) => { setForm({ ...form, pincode: e.target.value.replace(/\D/g, "") }); setFieldErrors((f) => ({ ...f, pincode: "" })); }} />
+            <input value={form.pincode} inputMode="numeric" maxLength={6} disabled={!form.state_id || !form.district_id} placeholder={!form.state_id ? "Select a state first" : !form.district_id ? "Select a district first" : "6-digit pincode"} onChange={(e) => { setForm({ ...form, pincode: e.target.value.replace(/\D/g, "") }); setFieldErrors((f) => ({ ...f, pincode: "" })); }} />
             {fieldErrors.pincode && <div className="text-[11.5px] text-brand-red mt-1">{fieldErrors.pincode}</div>}
           </div>
           <div className="field">

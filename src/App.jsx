@@ -56,8 +56,8 @@ export default function App() {
             <Route path="shops" element={<ShopsPage isAdmin />} />
             <Route path="commodities" element={<CommoditiesPage isAdmin />} />
             <Route path="farmers" element={<FarmersPage canDelete isAdmin />} />
-            <Route path="vehicles" element={<VehicleLogPage />} />
-            <Route path="reports" element={<ReportsPage showSales showGateActivity />} />
+            <Route path="vehicles" element={<VehicleLogPage isAdmin />} />
+            <Route path="reports" element={<ReportsPage showSales showGateActivity isAdmin />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
 

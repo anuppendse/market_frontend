@@ -4,14 +4,12 @@ import Modal from "../../components/Modal";
 import StatusToggle from "../../components/StatusToggle";
 import { Toolbar, SearchBox, FilterSelect, Spacer } from "../../components/Toolbar";
 import { useAuth } from "../../context/AuthContext";
-import { cleanName, businessNameError, personNameError, mobileError } from "../../utils/validators";
+import { cleanName, businessNameError } from "../../utils/validators";
 import { fetchShops, createShop, updateShop, setShopStatus, deleteShop, fetchMarkets } from "../../api/endpoints";
 import { SEARCH_MIN_CHARS, SEARCH_DEBOUNCE_MS } from "../../utils/search";
 
 const EMPTY_FORM = {
   name: "",
-  owner_name: "",
-  mobile: "",
   market_id: "",
   status: "ACTIVE",
 };
@@ -23,10 +21,6 @@ function validateShopForm(form, isAdmin) {
   const errors = {};
   const nameErr = businessNameError("Shop name", form.name);
   if (nameErr) errors.name = nameErr;
-  const ownerErr = personNameError("Owner name", form.owner_name);
-  if (ownerErr) errors.owner_name = ownerErr;
-  const mobileErr = mobileError(form.mobile);
-  if (mobileErr) errors.mobile = mobileErr;
   if (isAdmin && !form.market_id) errors.market_id = "Please select a market.";
   return errors;
 }
@@ -106,8 +100,6 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
     setEditingId(s.id);
     setForm({
       name: s.name,
-      owner_name: s.owner_name || "",
-      mobile: s.mobile || "",
       market_id: s.market_id,
       status: s.status,
     });
@@ -124,7 +116,7 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
     if (Object.keys(errors).length > 0) return;
 
     // Duplicate check against the full, current shop list (not the filtered
-    // table): one shop name per market, one shop per mobile number.
+    // table): one shop name per market.
     try {
       const existing = await fetchShops();
       const norm = (v) => cleanName(v).toLowerCase();
@@ -132,10 +124,8 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
       const sameName = others.find(
         (x) => norm(x.name) === norm(form.name) && String(x.market_id) === String(form.market_id)
       );
-      const sameMobile = others.find((x) => (x.mobile || "").trim() === form.mobile.trim());
       const dupErrors = {};
       if (sameName) dupErrors.name = `A shop named "${sameName.name}" already exists in this market.`;
-      if (sameMobile) dupErrors.mobile = `This mobile number is already registered for shop "${sameMobile.name}".`;
       if (Object.keys(dupErrors).length > 0) {
         setFieldErrors(dupErrors);
         return;
@@ -147,8 +137,6 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
     const payload = {
       ...form,
       name: cleanName(form.name),
-      owner_name: cleanName(form.owner_name),
-      mobile: form.mobile.trim(),
       market_id: Number(form.market_id),
     };
     try {
@@ -165,8 +153,17 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
   }
 
   async function toggleStatus(s) {
-    await setShopStatus(s.id, s.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
-    loadShops(search);
+    try {
+      await setShopStatus(s.id, s.status === "ACTIVE" ? "INACTIVE" : "ACTIVE");
+    } catch (err) {
+      alert(err?.response?.data?.error || "Could not change shop status.");
+      return;
+    }
+    // Refresh: back to the default view (search cleared, filters on first option).
+    setSearch("");
+    setStatusFilter("ALL");
+    setMarketFilter("");
+    loadShops("");
   }
 
   async function handleDelete(s) {
@@ -182,7 +179,7 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
   const columns = [
     { key: "name", header: "Shop Name" },
     { key: "market_name", header: "Market Name" },
-    { key: "owner_name", header: "Owner" },
+    { key: "owner_name", header: "Shopkeeper" },
     { key: "mobile", header: "Contact" },
     {
       key: "status",
@@ -251,22 +248,6 @@ export default function ShopsPage({ isAdmin, isShopkeeper }) {
             <label>Shop Name</label>
             <input value={form.name} maxLength={100} onChange={(e) => { setForm({ ...form, name: e.target.value }); setFieldErrors((f) => ({ ...f, name: "" })); }} />
             {fieldErrors.name && <span className="text-[12px] text-brand-red">{fieldErrors.name}</span>}
-          </div>
-          <div className="field">
-            <label>Owner Name</label>
-            <input value={form.owner_name} maxLength={60} onChange={(e) => { setForm({ ...form, owner_name: e.target.value }); setFieldErrors((f) => ({ ...f, owner_name: "" })); }} />
-            {fieldErrors.owner_name && <span className="text-[12px] text-brand-red">{fieldErrors.owner_name}</span>}
-          </div>
-          <div className="field">
-            <label>Mobile</label>
-            <input
-              value={form.mobile}
-              onChange={(e) => { setForm({ ...form, mobile: e.target.value.replace(/\D/g, "") }); setFieldErrors((f) => ({ ...f, mobile: "" })); }}
-              placeholder="10-digit mobile number"
-              inputMode="numeric"
-              maxLength={10}
-            />
-            {fieldErrors.mobile && <span className="text-[12px] text-brand-red">{fieldErrors.mobile}</span>}
           </div>
           {isAdmin && (
             <div className="field col-span-2">
